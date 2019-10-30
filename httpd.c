@@ -159,6 +159,24 @@ void format_size (char *buf, struct stat *stat) {
   }
 }
 
+int directory_filter(const struct dirent *entry){
+  struct stat st;
+  stat(entry->d_name, &st);
+  if (S_ISDIR(st.st_mode)) {
+    return 1;
+  }
+  return 0;
+}
+
+int file_filter(const struct dirent *entry){
+  struct stat st;
+  stat(entry->d_name, &st);
+  if (S_ISREG(st.st_mode)) {
+    return 1;
+  }
+  return 0;
+}
+
 void serve_directory (int out_fd, int dir_fd, char *filename) {
   char buf[MAXLINE];
   char m_time[32];
@@ -207,45 +225,47 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   // send start of body
   written(out_fd, buf, strlen(buf));
 
-  // open directory
-  DIR *d = fdopendir(dir_fd);
-  struct dirent *dp;
+  int n;
   int file_fd;
+  struct dirent **namelist;
 
-  // read directory to end
-  while ((dp = readdir(d)) != NULL) {
-    /*
-    if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")) {
-      // if current dir (.) or parent dir (..) skip
-      continue;
-    }
-    */
-    if (!strcmp(dp->d_name, ".")) {
-      // if current dir (.) skip
-      continue;
-    }
-    if ((file_fd = openat(dir_fd, dp->d_name, O_RDONLY)) == -1) {
-      // show error and skip if file can't be read
-      perror(dp->d_name);
-      continue;
-    }
+  // store cwd and change into subdir for request if any
+  char buffer[256];
+  char *path = getcwd(buffer, 256);
+  chdir(filename);
 
-    // read file properties
-    fstat(file_fd, &statbuf);
-    strftime(m_time, sizeof m_time, "%Y-%m-%d %H:%M", localtime(&statbuf.st_mtime));
-    format_size(size, &statbuf);
+  // scan directory for directories
+  n = scandir(".", &namelist, directory_filter, alphasort);
+  if (n < 0) {
+    perror("scandir");
+  } else {
+    for (int i = 0; i < n; ++i) {
+      if (!strcmp(namelist[i]->d_name, ".")) {
+        // if current dir (.) skip
+        free(namelist[i]);
+        continue;
+      }
+      if ((file_fd = openat(dir_fd, namelist[i]->d_name, O_RDONLY)) == -1) {
+        // show error and skip if file can't be read
+        perror(namelist[i]->d_name);
+        free(namelist[i]);
+        continue;
+      }
 
-    // blank for current / parent dirs
-    if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")) {
-      sprintf(m_time, "");
-      sprintf(size, "");
-    }
+      // read file properties
+      fstat(file_fd, &statbuf);
+      strftime(m_time, sizeof m_time, "%Y-%m-%d %H:%M", localtime(&statbuf.st_mtime));
+      format_size(size, &statbuf);
 
-    if (S_ISREG(statbuf.st_mode) || S_ISDIR(statbuf.st_mode)) {
-      char *d = S_ISDIR(statbuf.st_mode) ? "/" : "";
+      // blank for current / parent dirs
+      if (!strcmp(namelist[i]->d_name, ".") || !strcmp(namelist[i]->d_name, "..")) {
+        sprintf(m_time, "");
+        sprintf(size, "");
+      }
+
       sprintf(buf, "      <tr>\n"
                    "        <td>\n"
-                   "          <a href=\"%s%s\">%s%s</a>\n"
+                   "          <a href=\"%s/\">%s/</a>\n"
                    "        </td>\n"
                    "        <td>\n"
                    "          %s\n"
@@ -253,10 +273,50 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
                    "        <td>\n"
                    "          %s\n"
                    "        </td>\n"
-                   "      </tr>\n", dp->d_name, d, dp->d_name, d, m_time, size);
+                   "      </tr>\n", namelist[i]->d_name, namelist[i]->d_name, m_time, size);
       written(out_fd, buf, strlen(buf));
+      close(file_fd);
+
+      free(namelist[i]);
     }
-    close(file_fd);
+    free(namelist);
+  }
+
+  // scan directory for files
+  n = scandir(".", &namelist, file_filter, alphasort);
+  if (n < 0) {
+    perror("scandir");
+  } else {
+    for (int i = 0; i < n; ++i) {
+      if ((file_fd = openat(dir_fd, namelist[i]->d_name, O_RDONLY)) == -1) {
+        // show error and skip if file can't be read
+        perror(namelist[i]->d_name);
+        free(namelist[i]);
+        continue;
+      }
+
+      // read file properties
+      fstat(file_fd, &statbuf);
+      strftime(m_time, sizeof m_time, "%Y-%m-%d %H:%M", localtime(&statbuf.st_mtime));
+      format_size(size, &statbuf);
+
+      sprintf(buf, "      <tr>\n"
+                   "        <td>\n"
+                   "          <a href=\"%s\">%s</a>\n"
+                   "        </td>\n"
+                   "        <td>\n"
+                   "          %s\n"
+                   "        </td>\n"
+                   "        <td>\n"
+                   "          %s\n"
+                   "        </td>\n"
+                   "      </tr>\n", namelist[i]->d_name, namelist[i]->d_name, m_time, size);
+      written(out_fd, buf, strlen(buf));
+      close(file_fd);
+
+      free(namelist[i]);
+    }
+    free(namelist);
   }
 
   sprintf(buf, "    </table>\n"
@@ -264,7 +324,9 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
                "  </body>\n"
                "</html>\r\n\r\n");
   written(out_fd, buf, strlen(buf));
-  closedir(d);
+
+  // change back to the webroot
+  chdir(path);
 }
 
 static const char *get_mimetype (char *filename) {
