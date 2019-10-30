@@ -161,6 +161,7 @@ void format_size (char *buf, struct stat *stat) {
 
 void serve_directory (int out_fd, int dir_fd, char *filename) {
   char buf[MAXLINE];
+  char buf2[MAXLINE];
   char m_time[32];
   char size[16];
   struct stat statbuf;
@@ -243,29 +244,43 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
 
     if (S_ISREG(statbuf.st_mode) || S_ISDIR(statbuf.st_mode)) {
       char *d = S_ISDIR(statbuf.st_mode) ? "/" : "";
-      sprintf(buf, "      <tr>\n"
-                   "        <td>\n"
-                   "          <a href=\"%s%s\">%s%s</a>\n"
-                   "        </td>\n"
-                   "        <td>\n"
-                   "          %s\n"
-                   "        </td>\n"
-                   "        <td>\n"
-                   "          %s\n"
-                   "        </td>\n"
-                   "      </tr>\n", dp->d_name, d, dp->d_name, d, m_time, size);
-
-      written(out_fd, buf, strlen(buf));
+      if (S_ISDIR(statbuf.st_mode)) {
+        sprintf(buf, "      <tr>\n"
+                     "        <td>\n"
+                     "          <a href=\"%s%s\">%s%s</a>\n"
+                     "        </td>\n"
+                     "        <td>\n"
+                     "          %s\n"
+                     "        </td>\n"
+                     "        <td>\n"
+                     "          %s\n"
+                     "        </td>\n"
+                     "      </tr>\n", dp->d_name, d, dp->d_name, d, m_time, size);
+        written(out_fd, buf, strlen(buf));
+      } else {
+        sprintf(buf2 + strlen(buf2), "      <tr>\n"
+                                     "        <td>\n"
+                                     "          <a href=\"%s%s\">%s%s</a>\n"
+                                     "        </td>\n"
+                                     "        <td>\n"
+                                     "          %s\n"
+                                     "        </td>\n"
+                                     "        <td>\n"
+                                     "          %s\n"
+                                     "        </td>\n"
+                                     "      </tr>\n", dp->d_name, d, dp->d_name, d, m_time, size);
+      }
     }
+    close(file_fd);
   }
 
+  written(out_fd, buf2, strlen(buf2));
   sprintf(buf, "    </table>\n"
                "    <hr />\n"
                "  </body>\n"
                "</html>\r\n\r\n");
-
   written(out_fd, buf, strlen(buf));
-
+  closedir(d);
 }
 
 static const char *get_mimetype (char *filename) {
