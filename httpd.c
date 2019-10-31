@@ -31,9 +31,11 @@ typedef struct {
 typedef struct sockaddr SA; // make calls to bind(), connect(), and accept() more simple
 
 typedef struct {
-  char filename[512]; // requested file
-  off_t offset;       // http range request
-  size_t end;         // content length
+  char filename[512];    // requested file
+  off_t offset;          // http range request
+  size_t end;            // content length
+  char method[128];      // request method
+  char rtime[16];        // time taken for request
 } http_request;
 
 typedef struct {
@@ -406,6 +408,7 @@ void parse_request (int fd, http_request *req) {
   char method[MAXLINE];
   char uri[MAXLINE];
 
+  // defaults
   req->offset = 0;
   req->end = 0;
 
@@ -437,13 +440,74 @@ void parse_request (int fd, http_request *req) {
     }
   }
 
+  strcpy(req->method, method);
+
   url_decode(filename, req->filename, MAXLINE);
 }
 
 void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
-  // Log format:
-  //    ip:port status - filename
-  printf("%s:%d %d - %s\n", inet_ntoa(c_addr->sin_addr), ntohs(c_addr->sin_port), status, req->filename);
+  /* Log format:
+      [UTC Time String] status method  request_uri response_time content_length
+
+    Color Code Sequences:
+      Black:            \x1b[30m
+      Red:              \x1b[31m
+      Green:            \x1b[32m
+      Yellow:           \x1b[33m
+      Blue:             \x1b[34m
+      Magenta:          \x1b[35m
+      Cyan:             \x1b[36m
+      White:            \x1b[37m
+      Bright Black:     \x1b[30;1m
+      Bright Red:       \x1b[31;1m
+      Bright Green:     \x1b[32;1m
+      Bright Yellow:    \x1b[33;1m
+      Bright Blue:      \x1b[34;1m
+      Bright Magenta:   \x1b[35;1m
+      Bright Cyan:      \x1b[36;1m
+      Bright White:     \x1b[37;1m
+      Reset:            \x1b[0m
+  */
+
+  time_t t = time(NULL);
+  struct tm * lt = localtime(&t);
+  char reqtime[512];
+  strftime(reqtime, 1000, "%c", lt);
+
+  // colorize status code
+  char status_color[16];
+  if (status >= 100) {
+    sprintf(status_color, "\x1b[37m%d\x1b[0m", status);
+  }
+  if (status >= 200) {
+    sprintf(status_color, "\x1b[32;1m%d\x1b[0m", status);
+  }
+  if (status >= 300) {
+    sprintf(status_color, "\x1b[36;1m%d\x1b[0m", status);
+  }
+  if (status >= 400) {
+    sprintf(status_color, "\x1b[33;1m%d\x1b[0m", status);
+  }
+  if (status >= 500) {
+    sprintf(status_color, "\x1b[31;1m%d\x1b[0m", status);
+  }
+
+  // format filename and add color
+  char filename[512];
+  char filename_color[512];
+  if(!strncmp(req->filename, "./", 2)) {
+    sprintf(filename, "/");
+  } else {
+    sprintf(filename, "/%s", req->filename);
+  }
+  sprintf(filename_color, "\x1b[32;1m%s\x1b[0m", filename);
+
+  // bytes sent
+  char bytes_sent[16];
+  sprintf(bytes_sent, "%d", req->end - req->offset);
+
+  // Print Log msg
+  printf("[%s] %s %-6s %s %s %s\n", reqtime, status_color, req->method, filename_color, req->rtime, bytes_sent);
 }
 
 void client_error(int fd, int status, char *msg, char *longmsg) {
@@ -476,14 +540,17 @@ void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) 
     if (sendfile(out_fd, in_fd, &offset, req->end - req->offset) <= 0) {
       break;
     }
-    printf("offset: %d\n\n", offset);
+    //printf("offset: %d\n\n", offset);
     close(out_fd);
     break;
   }
 }
 
 void process (int fd, struct sockaddr_in *clientaddr) {
-  printf("accept request\n");
+  //printf("accept request\n");
+
+  struct timespec stime;
+  clock_gettime(CLOCK_REALTIME, &stime);
 
   http_request req;
   parse_request(fd, &req);
@@ -491,6 +558,25 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   struct stat sbuf;
   int status = 200;
   int file_fd = open(req.filename, O_RDONLY, 0);
+
+  // are we viewing a directory
+  if (!strcmp(req.filename, ".") || req.filename[strlen(req.filename) - 1] == '/') {
+    char default_file[512];
+
+    // add '/' to root dir (.)
+    if (!strcmp(req.filename, ".")) {
+      sprintf(req.filename, "./");
+    }
+    sprintf(default_file, "%sindex.html", req.filename);
+
+    // check if 'index.html' exists if it does change request
+    // to open that so we dont get a dir listing
+    int default_fd = open(default_file, O_RDONLY, 0);
+    if (default_fd >= 1) {
+      file_fd = default_fd;
+      sprintf(req.filename, "%s", default_file);
+    }
+  }
 
   if (file_fd <= 0) {
     // if file not exist send a 404
@@ -518,6 +604,13 @@ void process (int fd, struct sockaddr_in *clientaddr) {
       client_error(fd, status, msg, longmsg);
     }
   }
+
+  struct timespec etime;
+  clock_gettime(CLOCK_REALTIME, &etime);
+  unsigned long long rt = 1000 * (etime.tv_sec - stime.tv_sec) + (etime.tv_nsec - stime.tv_nsec) / 1000000;
+  char rtime[16];
+  sprintf(rtime, "%llu ms", rt);
+  strcpy(req.rtime, rtime);
 
   log_access(status, clientaddr, &req);
 }
