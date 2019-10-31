@@ -472,7 +472,7 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
   time_t t = time(NULL);
   struct tm * lt = localtime(&t);
   char reqtime[512];
-  strftime(reqtime, 1000, "%c", lt);
+  strftime(reqtime, sizeof reqtime, "%c", lt);
 
   // colorize status code
   char status_color[16];
