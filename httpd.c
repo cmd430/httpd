@@ -607,9 +607,13 @@ void process (int fd, struct sockaddr_in *clientaddr) {
 
   struct timespec etime;
   clock_gettime(CLOCK_REALTIME, &etime);
-  unsigned long long rt = 1000 * (etime.tv_sec - stime.tv_sec) + (etime.tv_nsec - stime.tv_nsec) / 1000000;
+  double rt = (1000 * (etime.tv_sec - stime.tv_sec)) + ((float)(etime.tv_nsec - stime.tv_nsec) / 1000000) ;
   char rtime[16];
-  sprintf(rtime, "%llu ms", rt);
+  if (rt <= 999) {
+    sprintf(rtime, "%.1f ms", rt);
+  } else {
+    sprintf(rtime, "%.2f s", rt / 1000);
+  }
   strcpy(req.rtime, rtime);
 
   log_access(status, clientaddr, &req);
