@@ -605,6 +605,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
     }
   }
 
+  // calculate response time
   struct timespec etime;
   clock_gettime(CLOCK_REALTIME, &etime);
   double rt = (1000 * (etime.tv_sec - stime.tv_sec)) + ((float)(etime.tv_nsec - stime.tv_nsec) / 1000000) ;
