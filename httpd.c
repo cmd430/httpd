@@ -495,7 +495,7 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
   // format filename and add color
   char filename[512];
   char filename_color[512];
-  if(!strncmp(req->filename, "./", 2)) {
+  if(!strncmp(req->filename, "./", 2) || !strncmp(req->filename, ".", 1)) {
     sprintf(filename, "/");
   } else {
     sprintf(filename, "/%s", req->filename);
@@ -510,18 +510,26 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
     sprintf(rtime, "%.2f s", req->rtime / 1000);
   }
 
-  // bytes sent
-  char bytes_sent[16];
-  sprintf(bytes_sent, "%d", req->end - req->offset);
+  // content length
+  char content_length[16];
+  int cl = req->end - req->offset;
+  if (cl > 0) {
+    sprintf(content_length, "%d", cl);
+  } else {
+    sprintf(content_length, "");
+  }
+
 
   // Print Log msg
-  printf("[%s] %s %-6s %s %s %s\n", reqtime, status_color, req->method, filename_color, rtime, bytes_sent);
+  printf("[%s] %s %-6s %s %s %s\n", reqtime, status_color, req->method, filename_color, rtime, content_length);
 }
 
-void client_error(int fd, int status, char *msg, char *longmsg) {
+void client_error(int fd, int status, char *msg, char *longmsg, http_request *req) {
   char buf[MAXLINE];
+  req->end = strlen(longmsg);
+
   sprintf(buf, "HTTP/1.1 %d %s\r\n", status, msg);
-  sprintf(buf + strlen(buf), "Content-length: %lu\r\n\r\n", strlen(longmsg));
+  sprintf(buf + strlen(buf), "Content-length: %lu\r\n\r\n", req->end);
   sprintf(buf + strlen(buf), "%s", longmsg);
   written(fd, buf, strlen(buf));
 }
@@ -569,50 +577,60 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   int status = 200;
   int file_fd = open(req.filename, O_RDONLY, 0);
 
-  // are we viewing a directory
-  if (!strcmp(req.filename, ".") || req.filename[strlen(req.filename) - 1] == '/') {
-    char default_file[512];
 
-    // add '/' to root dir (.)
-    if (!strcmp(req.filename, ".")) {
-      sprintf(req.filename, "./");
-    }
-    sprintf(default_file, "%sindex.html", req.filename);
+  // handle differnt request methods
+  if (!strcmp(req.method, "GET") || !strcmp(req.method, "HEAD")) { // GET or HEAD requests
+    // are we viewing a directory
+    if (!strcmp(req.filename, ".") || req.filename[strlen(req.filename) - 1] == '/') {
+      char default_file[512];
 
-    // check if 'index.html' exists if it does change request
-    // to open that so we dont get a dir listing
-    int default_fd = open(default_file, O_RDONLY, 0);
-    if (default_fd >= 1) {
-      file_fd = default_fd;
-      sprintf(req.filename, "%s", default_file);
-    }
-  }
-
-  if (file_fd <= 0) {
-    // if file not exist send a 404
-    status = 404;
-    char *msg = "Not found";
-    char *longmsg = "File not found";
-    client_error(fd, status, msg, longmsg);
-  } else {
-    fstat(file_fd, &sbuf);
-    if (S_ISREG(sbuf.st_mode)) { // is file
-      if (req.end == 0) {
-        req.end = sbuf.st_size;
+      // add '/' to root dir (.)
+      if (!strcmp(req.filename, ".")) {
+        sprintf(req.filename, "./");
       }
-      if (req.offset > 0) {
-        status = 206;
+      sprintf(default_file, "%sindex.html", req.filename);
+
+      // check if 'index.html' exists if it does change request
+      // to open that so we dont get a dir listing
+      int default_fd = open(default_file, O_RDONLY, 0);
+      if (default_fd >= 1) {
+        file_fd = default_fd;
+        sprintf(req.filename, "%s", default_file);
       }
-      serve_static(fd, file_fd, &req, sbuf.st_size);
-    } else if (S_ISDIR(sbuf.st_mode)) { // is dir
-      status = 200;
-      serve_directory(fd, file_fd, req.filename);
-    } else { // unknown error
-      status = 500;
-      char *msg = "Interanl server error";
-      char *longmsg = "An unknown error occurred";
-      client_error(fd, status, msg, longmsg);
     }
+
+    if (file_fd <= 0) {
+      // if file not exist send a 404
+      status = 404;
+      char *msg = "Not Found";
+      char *longmsg = "File not found";
+      client_error(fd, status, msg, longmsg, &req);
+    } else {
+      fstat(file_fd, &sbuf);
+      if (S_ISREG(sbuf.st_mode)) { // is file
+        if (req.end == 0) {
+          req.end = sbuf.st_size;
+        }
+        if (req.offset > 0) {
+          status = 206;
+        }
+        serve_static(fd, file_fd, &req, sbuf.st_size);
+      } else if (S_ISDIR(sbuf.st_mode)) { // is dir
+        status = 200;
+        serve_directory(fd, file_fd, req.filename);
+      } else { // unknown error
+        status = 500;
+        char *msg = "Interanl Server Error";
+        char *longmsg = "An unknown error occurred";
+        client_error(fd, status, msg, longmsg, &req);
+      }
+    }
+  } else { // any other request methods
+    // method not implimented
+    status = 501;
+    char *msg = "Not Implemented";
+    char *longmsg = "Method not implemented";
+    client_error(fd, status, msg, longmsg, &req);
   }
 
   // calculate response time
