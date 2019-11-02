@@ -2,14 +2,15 @@
 
   TODO:
     support config files to load httpd config automatically
-    support .htaccess rules
     support custom directory listing pages
     support custom log format
     add nicer error default pages (should have some html structure)
     support custom error pages
     support all common HTTP/1.1 methods
+    support PHP/CGI
+    support .htaccess rules
+    support plugins/modules
     support HTTP/2
-    support PHP
 
 */
 #include <arpa/inet.h>
