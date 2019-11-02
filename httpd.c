@@ -324,7 +324,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   sprintf(buf, "    </table>\n"
                "    <hr />\n"
                "  </body>\n"
-               "</html>\r\n\r\n");
+               "</html>");
   written(out_fd, buf, strlen(buf));
 
   // change back to the webroot
@@ -518,7 +518,6 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
   } else {
     sprintf(content_length, "");
   }
-
 
   // Print Log msg
   printf("[%s] %s %-6s %s %s %s\n", reqtime, status_color, req->method, filename_color, rtime, content_length);
