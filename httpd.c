@@ -722,27 +722,26 @@ int main (int argc, char* argv[]) { // main entry point for program
   // ignore SIGPIPE signal so if a brower aborts a request we don't kill the process
   signal(SIGPIPE, SIG_IGN);
 
-  // create child processes to handle requests
-  for (int i = 0; i < 5; i++) {
+  // create child processes to handle each request
+  while (1) {
+    connectionfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
+    if (connectionfd < 0) {
+      perror("could not accept connection\n");
+    }
     int pid = fork();
-    if (pid == 0) {       // child proc
-      while (1) {
-        connectionfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
-        process(connectionfd, &clientaddr);
-        close(connectionfd);
-      }
-    } else if (pid > 0) { // parent proc
-      // printf("spawned child with pid %d\n", pid);
+    if (pid == 0) {
+      close(listenfd);
+      process(connectionfd, &clientaddr);
+      close(connectionfd);
+      exit(0);
+    } else if (pid > 0) {
+      //printf("spawned child with pid %d\n", pid);
+      close(connectionfd);
     } else {
       perror("unable to spawn child processes\n");
     }
   }
-
-  while (1) {
-    connectionfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
-    process(connectionfd, &clientaddr);
-    close(connectionfd);
-  }
+  close(listenfd);
 
   return 0;
 }
