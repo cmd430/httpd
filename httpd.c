@@ -732,7 +732,7 @@ int main (int argc, char* argv[]) { // main entry point for program
         close(connectionfd);
       }
     } else if (pid > 0) { // parent proc
-      printf("spawned child with pid %d\n", pid);
+      // printf("spawned child with pid %d\n", pid);
     } else {
       perror("unable to spawn child processes\n");
     }
