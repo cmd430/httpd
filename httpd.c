@@ -35,7 +35,7 @@ typedef struct {
   off_t offset;          // http range request
   size_t end;            // content length
   char method[128];      // request method
-  char rtime[16];        // time taken for request
+  double rtime;          // time taken for request
 } http_request;
 
 typedef struct {
@@ -502,12 +502,20 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
   }
   sprintf(filename_color, "\x1b[32;1m%s\x1b[0m", filename);
 
+  // reponse time
+  char rtime[16];
+  if (req->rtime <= 999) {
+    sprintf(rtime, "%.1f ms", req->rtime);
+  } else {
+    sprintf(rtime, "%.2f s", req->rtime / 1000);
+  }
+
   // bytes sent
   char bytes_sent[16];
   sprintf(bytes_sent, "%d", req->end - req->offset);
 
   // Print Log msg
-  printf("[%s] %s %-6s %s %s %s\n", reqtime, status_color, req->method, filename_color, req->rtime, bytes_sent);
+  printf("[%s] %s %-6s %s %s %s\n", reqtime, status_color, req->method, filename_color, rtime, bytes_sent);
 }
 
 void client_error(int fd, int status, char *msg, char *longmsg) {
@@ -550,6 +558,8 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   //printf("accept request\n");
 
   struct timespec stime;
+  struct timespec etime;
+
   clock_gettime(CLOCK_REALTIME, &stime);
 
   http_request req;
@@ -606,16 +616,8 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   }
 
   // calculate response time
-  struct timespec etime;
   clock_gettime(CLOCK_REALTIME, &etime);
-  double rt = (1000 * (etime.tv_sec - stime.tv_sec)) + ((float)(etime.tv_nsec - stime.tv_nsec) / 1000000) ;
-  char rtime[16];
-  if (rt <= 999) {
-    sprintf(rtime, "%.1f ms", rt);
-  } else {
-    sprintf(rtime, "%.2f s", rt / 1000);
-  }
-  strcpy(req.rtime, rtime);
+  req.rtime = (1000 * (etime.tv_sec - stime.tv_sec)) + ((float)(etime.tv_nsec - stime.tv_nsec) / 1000000);
 
   log_access(status, clientaddr, &req);
 }
