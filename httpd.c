@@ -577,8 +577,6 @@ void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) 
 }
 
 void process (int fd, struct sockaddr_in *clientaddr) {
-  //printf("accept request\n");
-
   struct timespec stime;
   struct timespec etime;
 
@@ -727,6 +725,8 @@ int main (int argc, char* argv[]) { // main entry point for program
     connectionfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
     if (connectionfd < 0) {
       perror("could not accept connection\n");
+    } else {
+      //printf("accepted connection\n");
     }
     int pid = fork();
     if (pid == 0) {
