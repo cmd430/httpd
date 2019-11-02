@@ -1,3 +1,17 @@
+/*
+
+  TODO:
+    support config files to load httpd config automatically
+    support .htaccess rules
+    support custom directory listing pages
+    support custom log format
+    add nicer error default pages (should have some html structure)
+    support custom error pages
+    support all common HTTP/1.1 methods
+    support HTTP/2
+    support PHP
+
+*/
 #include <arpa/inet.h>
 #include <signal.h>
 #include <dirent.h>
@@ -575,7 +589,6 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   struct stat sbuf;
   int status = 200;
   int file_fd = open(req.filename, O_RDONLY, 0);
-
 
   // handle differnt request methods
   if (!strcmp(req.method, "GET") || !strcmp(req.method, "HEAD")) { // GET or HEAD requests
