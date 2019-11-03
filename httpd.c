@@ -7,7 +7,6 @@
     add nicer error default pages (should have some html structure)
     support custom error pages
     support all common HTTP/1.1 methods
-    support PHP/CGI
     support .htaccess rules
     support plugins/modules
     support HTTP/2
@@ -47,9 +46,10 @@ typedef struct sockaddr SA; // make calls to bind(), connect(), and accept() mor
 
 typedef struct {
   char filename[512];    // requested file
+  char method[128];      // request method
+  char query[MAXLINE];   // query string
   off_t offset;          // http range request
   size_t end;            // content length
-  char method[128];      // request method
   double rtime;          // time taken for request
 } http_request;
 
@@ -211,13 +211,19 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   if (!strcmp(filename, ".")) {
     sprintf(dirname, "/");
   } else {
-    sprintf(dirname, "/%s", filename);
+    if (filename[strlen(filename) - 1] == '/') {
+      sprintf(dirname, "/%s", filename);
+    } else {
+      sprintf(dirname, "/%s/", filename);
+      sprintf(filename, "%s/", filename);
+    }
   }
 
   // create start of body
   sprintf(buf, "<!doctype html>\n"
                "<html>\n"
                "  <head>\n"
+               "    <base href=\"%s\" />\n"
                "    <title>Index of %s</title>\n"
                "    <style>\n"
                "      body {\n"
@@ -237,7 +243,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
                "  <body>\n"
                "    <h1>Index of %s</h1>\n"
                "    <hr />\n"
-               "    <table>\n", dirname, dirname);
+               "    <table>\n", dirname, dirname, dirname);
 
   // send start of body
   written(out_fd, buf, strlen(buf));
@@ -422,6 +428,7 @@ void parse_request (int fd, http_request *req) {
   char buf[MAXLINE];
   char method[MAXLINE];
   char uri[MAXLINE];
+  char query[MAXLINE];
 
   // defaults
   req->offset = 0;
@@ -439,10 +446,12 @@ void parse_request (int fd, http_request *req) {
     }
   }
 
+  strcpy(query, uri);
   char *filename = uri;
   if (uri[0] == '/') {
     filename = uri + 1;
     int length = strlen(filename);
+    int fnlen = 1;
     if (length == 0) {
       filename = ".";
     } else {
@@ -456,6 +465,13 @@ void parse_request (int fd, http_request *req) {
   }
 
   strcpy(req->method, method);
+  char *qs = strrchr(query, '?');
+  if (qs) {
+    memmove(qs, qs+1, strlen(qs));
+    strcpy(req->query, qs);
+  } else {
+    strcpy(req->query, "\0");
+  }
 
   url_decode(filename, req->filename, MAXLINE);
 }
@@ -576,6 +592,41 @@ void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) 
   }
 }
 
+void serve_cgi (int out_fd, http_request *req) {
+  char buf[256];
+  sprintf(buf, "HTTP/1.1 200 OK\r\n");
+  written(out_fd, buf, strlen(buf));
+
+  // fork and run php-cgi
+  int pid = fork();
+  if (pid == 0) {
+    //swap stdout and stderr to the socket
+    dup2(out_fd, STDOUT_FILENO);
+    dup2(out_fd, STDERR_FILENO);
+
+    // setup envars for php-cgi
+    putenv("GATEWAY_INTERFACE=CGI/1.1");
+    char script[512];
+    sprintf(script, "SCRIPT_FILENAME=%s", req->filename);
+    putenv(script);
+    char query[512];
+    sprintf(query, "QUERY_STRING=%s", req->query);
+    putenv(query);
+    char method[16];
+    sprintf(method, "REQUEST_METHOD=%s", req->method);
+    putenv(method);
+    putenv("REDIRECT_STATUS=true");
+    putenv("SERVER_PROTOCOL=HTTP/1.1");
+    putenv("REMOTE_HOST=127.0.0.1");
+
+    // run php-cgi
+    execl("/usr/bin/php-cgi", "php-cgi", NULL);
+    exit(0);
+  } else if (pid < 0) {
+    perror("unable to spawn child processes\n");
+  }
+}
+
 void process (int fd, struct sockaddr_in *clientaddr) {
   struct timespec stime;
   struct timespec etime;
@@ -590,7 +641,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   int file_fd = open(req.filename, O_RDONLY, 0);
 
   // handle differnt request methods
-  if (!strcmp(req.method, "GET") || !strcmp(req.method, "HEAD")) { // GET or HEAD requests
+  if (!strcmp(req.method, "GET") || !strcmp(req.method, "HEAD") || !strcmp(req.method, "POST")) {
     // are we viewing a directory
     if (!strcmp(req.filename, ".") || req.filename[strlen(req.filename) - 1] == '/') {
       char default_file[512];
@@ -625,7 +676,11 @@ void process (int fd, struct sockaddr_in *clientaddr) {
         if (req.offset > 0) {
           status = 206;
         }
-        serve_static(fd, file_fd, &req, sbuf.st_size);
+        if (!strcmp(strrchr(req.filename, '.'), ".php")) {
+          serve_cgi(fd, &req);
+        } else {
+          serve_static(fd, file_fd, &req, sbuf.st_size);
+        }
       } else if (S_ISDIR(sbuf.st_mode)) { // is dir
         status = 200;
         serve_directory(fd, file_fd, req.filename);
