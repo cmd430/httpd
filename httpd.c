@@ -12,6 +12,7 @@
     support HTTP/2
     get correct content length for php scripts
     impliment for each loop to pick index (and allow custom index names)
+    support SSL (https)
 
 */
 #include <arpa/inet.h>
