@@ -10,6 +10,8 @@
     support .htaccess rules
     support plugins/modules
     support HTTP/2
+    get correct content length for php scripts
+    impliment for each loop to pick index (and allow custom index names)
 
 */
 #include <arpa/inet.h>
@@ -211,12 +213,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   if (!strcmp(filename, ".")) {
     sprintf(dirname, "/");
   } else {
-    if (filename[strlen(filename) - 1] == '/') {
-      sprintf(dirname, "/%s", filename);
-    } else {
-      sprintf(dirname, "/%s/", filename);
-      sprintf(filename, "%s/", filename);
-    }
+    sprintf(dirname, "/%s", filename);
   }
 
   // create start of body
@@ -642,25 +639,6 @@ void process (int fd, struct sockaddr_in *clientaddr) {
 
   // handle differnt request methods
   if (!strcmp(req.method, "GET") || !strcmp(req.method, "HEAD") || !strcmp(req.method, "POST")) {
-    // are we viewing a directory
-    if (!strcmp(req.filename, ".") || req.filename[strlen(req.filename) - 1] == '/') {
-      char default_file[512];
-
-      // add '/' to root dir (.)
-      if (!strcmp(req.filename, ".")) {
-        sprintf(req.filename, "./");
-      }
-      sprintf(default_file, "%sindex.html", req.filename);
-
-      // check if 'index.html' exists if it does change request
-      // to open that so we dont get a dir listing
-      int default_fd = open(default_file, O_RDONLY, 0);
-      if (default_fd >= 1) {
-        file_fd = default_fd;
-        sprintf(req.filename, "%s", default_file);
-      }
-    }
-
     if (file_fd <= 0) {
       // if file not exist send a 404
       status = 404;
@@ -668,6 +646,43 @@ void process (int fd, struct sockaddr_in *clientaddr) {
       char *longmsg = "File not found";
       client_error(fd, status, msg, longmsg, &req);
     } else {
+      // make sure there if an index file exist we use it
+      fstat(file_fd, &sbuf);
+      if (S_ISDIR(sbuf.st_mode)) {
+        // add any missing /
+        if (!strcmp(req.filename, ".")) {
+          sprintf(req.filename, "./");
+        }
+        if (req.filename[strlen(req.filename) - 1] != '/') {
+          sprintf(req.filename, "%s/", req.filename);
+        }
+
+        // check if 'index.html or index.php' exists if it does change request
+        // to open that so we dont get a dir listing
+        int hasIndex = 0;
+        char default_file[512];
+        sprintf(default_file, "%sindex.html", req.filename);
+        int default_fd = open(default_file, O_RDONLY, 0);
+        if (default_fd >= 1) {
+          close(file_fd);
+          file_fd = default_fd;
+          sprintf(req.filename, "%s", default_file);
+          hasIndex = 1;
+        }
+        sprintf(default_file, "%sindex.php", req.filename);
+        default_fd = open(default_file, O_RDONLY, 0);
+        if (default_fd >= 1) {
+          close(file_fd);
+          file_fd = default_fd;
+          sprintf(req.filename, "%s", default_file);
+          hasIndex = 1;
+        }
+        if (hasIndex == 0) {
+          close(default_fd);
+        }
+      }
+
+      // show dirlisting or page
       fstat(file_fd, &sbuf);
       if (S_ISREG(sbuf.st_mode)) { // is file
         if (req.end == 0) {
@@ -698,6 +713,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
     char *longmsg = "Method not implemented";
     client_error(fd, status, msg, longmsg, &req);
   }
+  close(file_fd);
 
   // calculate response time
   clock_gettime(CLOCK_REALTIME, &etime);
