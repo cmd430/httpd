@@ -61,7 +61,7 @@ typedef struct {
   char index[128];        // index pages
 } config;
 
-config conf[1];              // global conf
+config conf[1];           // global conf
 
 typedef struct {
   const char *extention;
@@ -719,7 +719,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
           serve_directory(fd, file_fd, req.filename);
         } else { // unknown error
           status = 500;
-          char *msg = "Interanl Server Error";
+          char *msg = "Internal Server Error";
           char *longmsg = "An unknown error occurred";
           client_error(fd, status, msg, longmsg, &req);
         }
