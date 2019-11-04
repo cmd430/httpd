@@ -639,7 +639,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   int file_fd = open(req.filename, O_RDONLY, 0);
 
   // handle differnt request methods
-  if (!strcmp(req.method, "GET") || !strcmp(req.method, "HEAD") || !strcmp(req.method, "POST")) {
+  if (!strcmp(req.method, "GET") || !strcmp(req.method, "HEAD")) {
     if (file_fd <= 0) {
       // if file not exist send a 404
       status = 404;
