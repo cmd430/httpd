@@ -566,7 +566,7 @@ void client_error(int fd, int status, char *msg, char *longmsg, http_request *re
   sprintf(body_buf, "<!doctype html>\n"
                     "<html>\n"
                     "  <head>\n"
-                    "    <title>%s</title>\n"
+                    "    <title>%d %s</title>\n"
                     "    <style>\n"
                     "      body {\n"
                     "        font-family: monospace;\n"
@@ -582,7 +582,7 @@ void client_error(int fd, int status, char *msg, char *longmsg, http_request *re
                     "    <h1>%d %s</h1>\n"
                     "    <p>%s</p>\n"
                     "  </body>\n"
-                    "</html>", msg, status, msg, longmsg);
+                    "</html>", status, msg, status, msg, longmsg);
 
   req->end = strlen(body_buf);
 
