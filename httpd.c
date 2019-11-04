@@ -3,7 +3,6 @@
   TODO:
     support custom directory listing pages
     support custom log format
-    add nicer error default pages (should have some html structure)
     support custom error pages
     support all common HTTP/1.1 methods
     support .htaccess rules
@@ -211,7 +210,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   struct stat statbuf;
 
   // set headers
-  sprintf(buf, "HTTP/1.1 OK\r\n");
+  sprintf(buf, "HTTP/1.1 200 OK\r\n");
   sprintf(buf + strlen(buf), "Content-Type: text/html\r\n\r\n");
 
   // send headers
@@ -560,13 +559,41 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
 }
 
 void client_error(int fd, int status, char *msg, char *longmsg, http_request *req) {
-  char buf[MAXLINE];
-  req->end = strlen(longmsg);
+  char header_buf[MAXLINE];
+  char body_buf[MAXLINE];
 
-  sprintf(buf, "HTTP/1.1 %d %s\r\n", status, msg);
-  sprintf(buf + strlen(buf), "Content-length: %lu\r\n\r\n", req->end);
-  sprintf(buf + strlen(buf), "%s", longmsg);
-  written(fd, buf, strlen(buf));
+  // body
+  sprintf(body_buf, "<!doctype html>\n"
+                    "<html>\n"
+                    "  <head>\n"
+                    "    <title>%s</title>\n"
+                    "    <style>\n"
+                    "      body {\n"
+                    "        font-family: monospace;\n"
+                    "        font-size: 13px;\n"
+                    "      }\n"
+                    "      h1 {\n"
+                    "        font-family: serif;\n"
+                    "        font-size: 32px;\n"
+                    "      }"
+                    "    </style>\n"
+                    "  </head>\n"
+                    "  <body>\n"
+                    "    <h1>%d %s</h1>\n"
+                    "    <p>%s</p>\n"
+                    "  </body>\n"
+                    "</html>", msg, status, msg, longmsg);
+
+  req->end = strlen(body_buf);
+
+  // headers
+  sprintf(header_buf, "HTTP/1.1 %d %s\r\n", status, msg);
+  sprintf(header_buf + strlen(header_buf), "Content-Type: text/html\r\n");
+  sprintf(header_buf + strlen(header_buf), "Content-length: %lu\r\n\r\n", req->end);
+  written(fd, header_buf, strlen(header_buf));
+
+  // send body
+  written(fd, body_buf, strlen(body_buf));
 }
 
 void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) {
