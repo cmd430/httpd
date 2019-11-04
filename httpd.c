@@ -1,7 +1,6 @@
 /*
 
   TODO:
-    support config files to load httpd config automatically
     support custom directory listing pages
     support custom log format
     add nicer error default pages (should have some html structure)
@@ -11,7 +10,6 @@
     support plugins/modules
     support HTTP/2
     get correct content length for php scripts
-    impliment for each loop to pick index (and allow custom index names)
     support SSL (https)
 
 */
