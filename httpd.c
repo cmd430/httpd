@@ -57,6 +57,15 @@ typedef struct {
 } http_request;
 
 typedef struct {
+  int port;               // server listen port
+  char root[512];         // webroot
+  int listing;            // dir listing enabled or not
+  char index[128];        // index pages
+} config;
+
+config conf[1];              // global conf
+
+typedef struct {
   const char *extention;
   const char * mimetype;
 } mime_map;
@@ -647,9 +656,14 @@ void process (int fd, struct sockaddr_in *clientaddr) {
       char *longmsg = "File not found";
       client_error(fd, status, msg, longmsg, &req);
     } else {
+      int isDir = 0;
+      int hasIndex = 0;
+
       // make sure there if an index file exist we use it
       fstat(file_fd, &sbuf);
       if (S_ISDIR(sbuf.st_mode)) {
+        isDir = 1;
+
         // add any missing /
         if (!strcmp(req.filename, ".")) {
           sprintf(req.filename, "./");
@@ -658,53 +672,59 @@ void process (int fd, struct sockaddr_in *clientaddr) {
           sprintf(req.filename, "%s/", req.filename);
         }
 
-        // check if 'index.html or index.php' exists if it does change request
-        // to open that so we dont get a dir listing
-        int hasIndex = 0;
+        // check if an indexexists if it does change request
+        // to open that so we dont get a dir listing (if enabled)
+        char *index;
         char default_file[512];
-        sprintf(default_file, "%sindex.html", req.filename);
-        int default_fd = open(default_file, O_RDONLY, 0);
-        if (default_fd >= 1) {
-          close(file_fd);
-          file_fd = default_fd;
-          sprintf(req.filename, "%s", default_file);
-          hasIndex = 1;
-        }
-        sprintf(default_file, "%sindex.php", req.filename);
-        default_fd = open(default_file, O_RDONLY, 0);
-        if (default_fd >= 1) {
-          close(file_fd);
-          file_fd = default_fd;
-          sprintf(req.filename, "%s", default_file);
-          hasIndex = 1;
+        int default_fd;
+        index = strtok (conf->index, ",");
+        while (index != NULL) {
+          sprintf(default_file, "%s%s", req.filename, index);
+          default_fd = open(default_file, O_RDONLY, 0);
+          if (default_fd >= 1) {
+            close(file_fd);
+            file_fd = default_fd;
+            sprintf(req.filename, "%s", default_file);
+            //printf("has index: %s\n", index);
+            hasIndex = 1;
+            break;
+          }
+          index = strtok (NULL, ",");
         }
         if (hasIndex == 0) {
           close(default_fd);
         }
       }
 
-      // show dirlisting or page
-      fstat(file_fd, &sbuf);
-      if (S_ISREG(sbuf.st_mode)) { // is file
-        if (req.end == 0) {
-          req.end = sbuf.st_size;
-        }
-        if (req.offset > 0) {
-          status = 206;
-        }
-        if (!strcmp(strrchr(req.filename, '.'), ".php")) {
-          serve_cgi(fd, &req);
-        } else {
-          serve_static(fd, file_fd, &req, sbuf.st_size);
-        }
-      } else if (S_ISDIR(sbuf.st_mode)) { // is dir
-        status = 200;
-        serve_directory(fd, file_fd, req.filename);
-      } else { // unknown error
-        status = 500;
-        char *msg = "Interanl Server Error";
-        char *longmsg = "An unknown error occurred";
+      if (conf->listing == 0 && hasIndex == 0 && isDir == 1) {
+        status = 403;
+        char *msg = "Forbidden";
+        char *longmsg = "You don't have permission to access this resource";
         client_error(fd, status, msg, longmsg, &req);
+      } else {
+        // show dirlisting or page
+        fstat(file_fd, &sbuf);
+        if (S_ISREG(sbuf.st_mode)) { // is file
+          if (req.end == 0) {
+            req.end = sbuf.st_size;
+          }
+          if (req.offset > 0) {
+            status = 206;
+          }
+          if (!strcmp(strrchr(req.filename, '.'), ".php")) {
+            serve_cgi(fd, &req);
+          } else {
+            serve_static(fd, file_fd, &req, sbuf.st_size);
+          }
+        } else if (S_ISDIR(sbuf.st_mode)) { // is dir
+          status = 200;
+          serve_directory(fd, file_fd, req.filename);
+        } else { // unknown error
+          status = 500;
+          char *msg = "Interanl Server Error";
+          char *longmsg = "An unknown error occurred";
+          client_error(fd, status, msg, longmsg, &req);
+        }
       }
     }
   } else { // any other request methods
@@ -723,67 +743,43 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   log_access(status, clientaddr, &req);
 }
 
+void parse_config(char *buf, config *conf) {
+  char int_buff[256];
+  if (sscanf(buf, " %s", int_buff) == EOF) return; // blank line
+  if (sscanf(buf, " %[#]", int_buff) == 1) return; // comment
+  if (sscanf(buf, " listen = %d", &conf->port) == 1) return;
+  if (sscanf(buf, " root = %s", &conf->root) == 1) return;
+  if (sscanf(buf, " listing = %d", &conf->listing) == 1) return;
+  if (sscanf(buf, " index = %s", &conf->index) == 1) return;
+  errno = -1;
+  perror("invalid conf");
+  exit(-1);
+}
+
 int main (int argc, char* argv[]) { // main entry point for program
   struct sockaddr_in clientaddr;
-  int default_port = 9999;
   int listenfd;
   int connectionfd;
-  char buffer[256];
-  char *path = getcwd(buffer, 256);
+  char *path;
+  char buf[256];
   socklen_t clientlen = sizeof clientaddr;
+  FILE *fconf = fopen("httpd.conf", "r");
 
-  /*
-    usage:
-      ./httpd <path> <port>
-
-    opts:
-      int port
-      str working dir
-
-    notes:
-      if both <path> and <port> are supplied <path> MUST be the first opt
-
-    argc length is equal to binary arg0 arg1 ... arg9
-    if argc = 1 we have no cmdline args
-              2 we have one cmdline arg etc
-  */
-  if (argc == 1) {
-    printf(
-      "\n"
-      "usage:\n"
-      "   ./httpd <path> <port>\n"
-      "\n"
-      "opts:\n"
-      "   path - optional (default 9999) - integer\n"
-      "   port - optional (default cwd)  - string\n"
-      "\n"
-      "notes:\n"
-      "   if both <path> and <port> are supplied <path> MUST be the first opt\n"
-      "\n"
-    );
-  } else if (argc == 2) {
-    if (argv[1][0] >= '0' && argv[1][0] <= '9') { // if arg is int we set port
-      default_port = atoi(argv[1]);               // set port
-    } else {                                      // we must be setting the working dir
-      path = argv[1];                             // set working dir
-      if (chdir(argv[1]) != 0) {                  // make sure path exists if not exit
-        perror(argv[1]);
-        exit(1);
-      }
-    }
-  } else if (argc == 3) {
-    default_port = atoi(argv[2]); // set port
-    path = argv[1];               // set working dir
-    if (chdir(argv[1]) != 0) {    // make sure path exists if not exit
-      perror(argv[1]);
-      exit(1);
-    }
+  // parse conf file
+  int line_number = 0;
+  while (fgets(buf, sizeof buf, fconf)) {
+    ++line_number;
+    parse_config(buf, conf);
+  }
+  if (chdir(conf->root) != 0) { // make sure path exists if not exit
+    perror(conf->root);
+    exit(1);
   }
 
   // start listening for connections
-  listenfd = open_listenfd(default_port);
+  listenfd = open_listenfd(conf->port);
   if (listenfd > 0) {
-    printf("listen on port %d, serving from %s\n", default_port, path);
+    printf("listen on port %d, serving from %s\n", conf->port, conf->root);
   } else {
     perror("could not listen\n");
     exit(listenfd);
