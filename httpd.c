@@ -267,8 +267,8 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
     perror("scandir");
   } else {
     for (int i = 0; i < n; ++i) {
-      if (!strcmp(namelist[i]->d_name, ".")) {
-        // if current dir (.) skip
+      if (namelist[i]->d_name[0] == '.' && strcmp(namelist[i]->d_name, "..")) {
+        // if current dir (.) or hidden skip
         free(namelist[i]);
         continue;
       }
@@ -315,6 +315,11 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
     perror("scandir");
   } else {
     for (int i = 0; i < n; ++i) {
+      if (namelist[i]->d_name[0] == '.') {
+        // if hidden skip
+        free(namelist[i]);
+        continue;
+      }
       if ((file_fd = openat(dir_fd, namelist[i]->d_name, O_RDONLY)) == -1) {
         // show error and skip if file can't be read
         perror(namelist[i]->d_name);
