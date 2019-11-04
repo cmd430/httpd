@@ -237,7 +237,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
                "      h1 {\n"
                "        font-family: serif;\n"
                "        font-size: 32px;\n"
-               "      }"
+               "      }\n"
                "      td {\n"
                "        padding: 1.5px 6px;\n"
                "        min-width: 250px;\n"
@@ -349,7 +349,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   sprintf(buf, "    </table>\n"
                "    <hr />\n"
                "  </body>\n"
-               "</html>");
+               "</html>\r\n\r\n");
   written(out_fd, buf, strlen(buf));
 
   // change back to the webroot
@@ -575,14 +575,14 @@ void client_error(int fd, int status, char *msg, char *longmsg, http_request *re
                     "      h1 {\n"
                     "        font-family: serif;\n"
                     "        font-size: 32px;\n"
-                    "      }"
+                    "      }\n"
                     "    </style>\n"
                     "  </head>\n"
                     "  <body>\n"
                     "    <h1>%d %s</h1>\n"
                     "    <p>%s</p>\n"
                     "  </body>\n"
-                    "</html>", status, msg, status, msg, longmsg);
+                    "</html>\r\n\r\n", status, msg, status, msg, longmsg);
 
   req->end = strlen(body_buf);
 
