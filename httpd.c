@@ -542,14 +542,14 @@ void serve_cgi (int out_fd, http_request *req) {
     close(cgi_in[0]);
 
     char body;
-    if (!strcmp(req->method, "POST")) {
+    if (!strcmp(req->method, "POST") && req->length > 0) {
       for (int i = 0; i < req->length; i++) {
         recv(out_fd, &body, 1, 0);
         write(cgi_in[1], &body, 1);
       }
     }
     while (read(cgi_out[0], &body, 1) > 0) {
-      send(out_fd, &body, 1, 0);
+      send_res(out_fd, &body, 1);
     }
 
     close(cgi_out[0]);
