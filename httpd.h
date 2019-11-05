@@ -29,36 +29,34 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+/* MACROS */
+#define SHOW_DEBUG TRUE // enable/disable some extra msgs
 
 /* CONSTANTS */
-#define LISTEN_Q    1024  // listen backlog (max length of pending connections)
-#define MAXLINE     1024  // max length of a single line
-#define RIO_BUFSIZE 1024  // Read IO buffer size
+#define TRUE     1
+#define FALSE    0
+#define LISTEN_Q 1024   // listen backlog (max length of pending connections)
+#define MAXLINE  1024   // max length of a single line
+#define EOL      "\r\n" // End of line chars
+#define EOL_SIZE 2      // size of EOL
 
 /* TYPEDEFS */
-typedef struct {
-  int rio_fd;                // buffer descriptor
-  int rio_cnt;               // unread byte
-  char *rio_bufptr;          // next unread byte
-  char rio_buf[RIO_BUFSIZE]; // internal buffer
-} rio_t;
-
-typedef struct sockaddr SA; // make calls to bind(), connect(), and accept() more simple
+typedef struct sockaddr addr; // make calls to bind(), connect(), and accept() more simple
 
 typedef struct {
-  char filename[512];    // requested file
-  char method[128];      // request method
-  char query[MAXLINE];   // query string
-  off_t offset;          // http range request
-  size_t end;            // content length
-  double rtime;          // time taken for request
+  char filename[512];  // requested file
+  char method[128];    // request method
+  char query[MAXLINE]; // query string
+  off_t offset;        // http range request
+  size_t end;          // content length
+  double rtime;        // time taken for request
 } http_request;
 
 typedef struct {
-  int port;               // server listen port
-  char root[512];         // webroot
-  int listing;            // dir listing enabled or not
-  char index[128];        // index pages
+  int port;        // server listen port
+  char root[512];  // webroot
+  int listing;     // dir listing enabled or not
+  char index[128]; // index pages
 } config;
 
 typedef struct {

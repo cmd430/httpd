@@ -1,85 +1,28 @@
 #include "httpd.h"
 
 
-void rio_readinitb (rio_t *rp, int fd) {
-  rp->rio_fd = fd;
-  rp->rio_cnt = 0;
-  rp->rio_bufptr = rp->rio_buf;
-}
-
-ssize_t written (int fd, void *usrbuf, size_t n) {
-  size_t nleft = n;
-  ssize_t nwritten;
-  char *bufp = usrbuf;
-
-  while (nleft > 0) {
-    if ((nwritten = write(fd, bufp, nleft)) <= 0) {
-      if (errno == EINTR) { // interrupted by sig handler return
-        nwritten = 0;       // recall write()
-      } else {
-        return -1;          // write() errono
-      }
-    }
-    nleft -= nwritten;
-    bufp += nwritten;
+void send_res (int fd, char *msg, size_t len) {
+  if (send(fd, msg, len, 0) == -1) {
+    perror("Error in send");
   }
 }
 
-static ssize_t rio_read (rio_t *rp, char *usrbuf, size_t n) {
-  int cnt;
-
-  while (rp->rio_cnt <= 0) {
-    rp->rio_cnt = read(rp->rio_fd, rp->rio_buf, sizeof(rp->rio_buf));
-
-    if (rp->rio_cnt < 0) {
-      if (errno != EINTR) {          // interrupted by sig handler return
-        return -1;
-      }
-    } else if (rp->rio_cnt == 0) {  // EOF
-      return 0;
-    } else {
-      rp->rio_bufptr = rp->rio_buf; // reset buffer ptr
-    }
-  }
-
-  // Copy min(n, rp->rio_cnt) bytes from internal buf to user buf
-  cnt = n;
-  if (rp->rio_cnt < n) {
-    cnt = rp->rio_cnt;
-  }
-
-  memcpy(usrbuf, rp->rio_bufptr, cnt);
-  rp->rio_bufptr += cnt;
-  rp->rio_cnt -= cnt;
-
-  return cnt;
-}
-
-ssize_t rio_readlineb (rio_t *rp, void *usrbuf, size_t maxlen){
-  int n;
-  int rc;
-  char c;
-  char *bufp = usrbuf;
-
-  for (n = 1; n < maxlen; n++){
-    if ((rc = rio_read(rp, &c, 1)) == 1){
-      *bufp++ = c;
-      if (c == '\n') {
-        break;
-      }
-    } else if (rc == 0){
-      if (n == 1) {
-        return 0; // EOF, no data read
-      } else {
-        break;    // EOF, some data was read
+int recv_req (int fd, char *buffer) {
+  char *p = buffer;
+  int matched_eol = 0;
+  while (recv(fd, p, 1, 0) != 0) {
+    if (*p == EOL[matched_eol]) {
+      ++matched_eol;
+      if (matched_eol == EOL_SIZE) {
+        *(p + 1 - EOL_SIZE) = '\0';
+        return (strlen(buffer));
       }
     } else {
-      return -1;   // error
+      matched_eol = 0;
     }
+    p++;
   }
-  *bufp = 0;
-
-  return n;
+  return 0;
 }
 
 void format_size (char *buf, struct stat *stat) {
@@ -99,7 +42,7 @@ void format_size (char *buf, struct stat *stat) {
   }
 }
 
-int directory_filter(const struct dirent *entry){
+int directory_filter (const struct dirent *entry){
   struct stat st;
   stat(entry->d_name, &st);
   if (S_ISDIR(st.st_mode)) {
@@ -108,7 +51,7 @@ int directory_filter(const struct dirent *entry){
   return 0;
 }
 
-int file_filter(const struct dirent *entry){
+int file_filter (const struct dirent *entry){
   struct stat st;
   stat(entry->d_name, &st);
   if (S_ISREG(st.st_mode)) {
@@ -128,7 +71,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   sprintf(buf + strlen(buf), "Content-Type: text/html\r\n\r\n");
 
   // send headers
-  written(out_fd, buf, strlen(buf));
+  send_res(out_fd, buf, strlen(buf));
 
   char dirname[256];
   if (!strcmp(filename, ".")) {
@@ -164,7 +107,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
                "    <table>\n", dirname, dirname, dirname);
 
   // send start of body
-  written(out_fd, buf, strlen(buf));
+  send_res(out_fd, buf, strlen(buf));
 
   int n;
   int file_fd;
@@ -215,7 +158,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
                    "          %s\n"
                    "        </td>\n"
                    "      </tr>\n", namelist[i]->d_name, namelist[i]->d_name, m_time, size);
-      written(out_fd, buf, strlen(buf));
+      send_res(out_fd, buf, strlen(buf));
       close(file_fd);
 
       free(namelist[i]);
@@ -257,7 +200,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
                    "          %s\n"
                    "        </td>\n"
                    "      </tr>\n", namelist[i]->d_name, namelist[i]->d_name, m_time, size);
-      written(out_fd, buf, strlen(buf));
+      send_res(out_fd, buf, strlen(buf));
       close(file_fd);
 
       free(namelist[i]);
@@ -269,7 +212,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
                "    <hr />\n"
                "  </body>\n"
                "</html>\r\n\r\n");
-  written(out_fd, buf, strlen(buf));
+  send_res(out_fd, buf, strlen(buf));
 
   // change back to the webroot
   chdir(path);
@@ -316,7 +259,7 @@ int open_listenfd (int port) { // open file descriptor (fd) for listen
   serveraddr.sin_port = htons((unsigned short) port); // bind port
 
   // bind port on host for any IP (interface)
-  if (bind(listenfd, (SA *)&serveraddr, sizeof(serveraddr)) < 0) {
+  if (bind(listenfd, (addr *)&serveraddr, sizeof(serveraddr)) < 0) {
     return -1;
   }
 
@@ -347,7 +290,6 @@ void url_decode (char *src, char *dest, int max) {
 }
 
 void parse_request (int fd, http_request *req) {
-  rio_t rio;
   char buf[MAXLINE];
   char method[MAXLINE];
   char uri[MAXLINE];
@@ -357,16 +299,19 @@ void parse_request (int fd, http_request *req) {
   req->offset = 0;
   req->end = 0;
 
-  rio_readinitb(&rio, fd);
-  rio_readlineb(&rio, buf, MAXLINE);
+  recv_req(fd, buf);
   sscanf(buf, "%s %s", method, uri);
-
-  while (buf[0] != '\n' && buf[1] != '\n') {
-    rio_readlineb(&rio, buf, MAXLINE);
+  #if SHOW_DEBUG == TRUE
+    printf("%s\n", buf);
+  #endif
+  while(recv_req(fd, buf)) {
     if (buf[0] == 'R' && buf[1] == 'a' && buf[2] == 'n') {
       sscanf(buf, "Range: bytes=%lu-%lu", &req->offset, &req->end);
       if (req->end != 0) req->end++;
     }
+    #if SHOW_DEBUG == TRUE
+      printf("%s\n", buf);
+    #endif
   }
 
   strcpy(query, uri);
@@ -477,7 +422,7 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
   printf("[%s] %s %-6s %s %s %s\n", reqtime, status_color, req->method, filename_color, rtime, content_length);
 }
 
-void client_error(int fd, int status, char *msg, char *longmsg, http_request *req) {
+void client_error (int fd, int status, char *msg, char *longmsg, http_request *req) {
   char header_buf[MAXLINE];
   char body_buf[MAXLINE];
 
@@ -509,10 +454,10 @@ void client_error(int fd, int status, char *msg, char *longmsg, http_request *re
   sprintf(header_buf, "HTTP/1.1 %d %s\r\n", status, msg);
   sprintf(header_buf + strlen(header_buf), "Content-Type: text/html\r\n");
   sprintf(header_buf + strlen(header_buf), "Content-length: %lu\r\n\r\n", req->end);
-  written(fd, header_buf, strlen(header_buf));
+  send_res(fd, header_buf, strlen(header_buf));
 
   // send body
-  written(fd, body_buf, strlen(body_buf));
+  send_res(fd, body_buf, strlen(body_buf));
 }
 
 void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) {
@@ -530,14 +475,13 @@ void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) 
   sprintf(buf + strlen(buf), "Content-length: %lu\r\n", req->end - req->offset);
   sprintf(buf + strlen(buf), "Content-type: %s\r\n\r\n", get_mimetype(req->filename));
 
-  written(out_fd, buf, strlen(buf));
+  send_res(out_fd, buf, strlen(buf));
 
   off_t offset = req->offset;
   while (offset < req->end) {
     if (sendfile(out_fd, in_fd, &offset, req->end - req->offset) <= 0) {
       break;
     }
-    //printf("offset: %d\n\n", offset);
     close(out_fd);
     break;
   }
@@ -546,7 +490,7 @@ void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) 
 void serve_cgi (int out_fd, http_request *req) {
   char buf[256];
   sprintf(buf, "HTTP/1.1 200 OK\r\n");
-  written(out_fd, buf, strlen(buf));
+  send_res(out_fd, buf, strlen(buf));
 
   // fork and run php-cgi
   int pid = fork();
@@ -629,7 +573,6 @@ void process (int fd, struct sockaddr_in *clientaddr) {
             close(file_fd);
             file_fd = default_fd;
             sprintf(req.filename, "%s", default_file);
-            //printf("has index: %s\n", index);
             hasIndex = 1;
             break;
           }
@@ -687,7 +630,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   log_access(status, clientaddr, &req);
 }
 
-void parse_config(char *buf, config *conf) {
+void parse_config (char *buf, config *conf) {
   char int_buff[256];
   if (sscanf(buf, " %s", int_buff) == EOF) return; // blank line
   if (sscanf(buf, " %[#]", int_buff) == 1) return; // comment
@@ -734,11 +677,13 @@ int main (int argc, char* argv[]) { // main entry point for program
 
   // create child processes to handle each request
   while (1) {
-    connectionfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
+    connectionfd = accept(listenfd, (addr *)&clientaddr, &clientlen);
     if (connectionfd < 0) {
       perror("could not accept connection\n");
     } else {
-      //printf("accepted connection\n");
+      #if SHOW_DEBUG == TRUE
+        printf("accepted connection\n");
+      #endif
     }
     int pid = fork();
     if (pid == 0) {
@@ -747,7 +692,9 @@ int main (int argc, char* argv[]) { // main entry point for program
       close(connectionfd);
       exit(0);
     } else if (pid > 0) {
-      //printf("spawned child with pid %d\n", pid);
+      #if SHOW_DEBUG == TRUE
+        printf("spawned child with pid %d\n", pid);
+      #endif
       close(connectionfd);
     } else {
       perror("unable to spawn child processes\n");
