@@ -298,6 +298,7 @@ void parse_request (int fd, http_request *req) {
   // defaults
   req->offset = 0;
   req->end = 0;
+  req->length = 0;
 
   recv_req(fd, buf);
   sscanf(buf, "%s %s", method, uri);
@@ -308,6 +309,9 @@ void parse_request (int fd, http_request *req) {
     if (buf[0] == 'R' && buf[1] == 'a' && buf[2] == 'n') {
       sscanf(buf, "Range: bytes=%lu-%lu", &req->offset, &req->end);
       if (req->end != 0) req->end++;
+    }
+    if (buf[0] == 'C' && buf[1] == 'o' && buf[2] == 'n' && buf[8] == 'L' && buf[9] == 'e' && buf[10] == 'n') {
+      sscanf(buf, "Content-Length: %d", &req->length);
     }
     #if SHOW_DEBUG == TRUE
       printf("%s\n", buf);
@@ -489,15 +493,28 @@ void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) 
 
 void serve_cgi (int out_fd, http_request *req) {
   char buf[256];
+  int cgi_out[2];
+  int cgi_in[2];
+
   sprintf(buf, "HTTP/1.1 200 OK\r\n");
   send_res(out_fd, buf, strlen(buf));
+
+  pipe(cgi_out);
+  pipe(cgi_in);
 
   // fork and run php-cgi
   int pid = fork();
   if (pid == 0) {
-    //swap stdout and stderr to the socket
-    dup2(out_fd, STDOUT_FILENO);
-    dup2(out_fd, STDERR_FILENO);
+
+    // disable php notices in console
+    #if SHOW_DEBUG == FALSE
+      dup2(cgi_err[2], STDERR_FILENO);
+    #endif
+
+    dup2(cgi_out[1], STDOUT_FILENO);
+    dup2(cgi_in[0], STDIN_FILENO);
+    close(cgi_out[0]);
+    close(cgi_in[1]);
 
     // setup envars for php-cgi
     putenv("GATEWAY_INTERFACE=CGI/1.1");
@@ -507,6 +524,9 @@ void serve_cgi (int out_fd, http_request *req) {
     char query[512];
     sprintf(query, "QUERY_STRING=%s", req->query);
     putenv(query);
+    char length[128];
+    sprintf(length, "CONTENT_LENGTH=%d", req->length);
+    putenv(length);
     char method[16];
     sprintf(method, "REQUEST_METHOD=%s", req->method);
     putenv(method);
@@ -517,6 +537,23 @@ void serve_cgi (int out_fd, http_request *req) {
     // run php-cgi
     execl("/usr/bin/php-cgi", "php-cgi", NULL);
     exit(0);
+  } else if (pid > 0) {
+    close(cgi_out[1]);
+    close(cgi_in[0]);
+
+    char body;
+    if (!strcmp(req->method, "POST")) {
+      for (int i = 0; i < req->length; i++) {
+        recv(out_fd, &body, 1, 0);
+        write(cgi_in[1], &body, 1);
+      }
+    }
+    while (read(cgi_out[0], &body, 1) > 0) {
+      send(out_fd, &body, 1, 0);
+    }
+
+    close(cgi_out[0]);
+    close(cgi_in[1]);
   } else if (pid < 0) {
     perror("unable to spawn child processes\n");
   }
@@ -536,7 +573,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   int file_fd = open(req.filename, O_RDONLY, 0);
 
   // handle differnt request methods
-  if (!strcmp(req.method, "GET") || !strcmp(req.method, "HEAD")) {
+  if (!strcmp(req.method, "GET") || !strcmp(req.method, "HEAD") || !strcmp(req.method, "POST")) {
     if (file_fd <= 0) {
       // if file not exist send a 404
       status = 404;

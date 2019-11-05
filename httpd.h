@@ -47,6 +47,7 @@ typedef struct {
   char filename[512];  // requested file
   char method[128];    // request method
   char query[MAXLINE]; // query string
+  int length;          // content length of POST
   off_t offset;        // http range request
   size_t end;          // content length
   double rtime;        // time taken for request
