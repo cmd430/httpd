@@ -30,11 +30,12 @@
 #include <unistd.h>
 
 
+/* CONSTANTS */
 #define LISTEN_Q    1024  // listen backlog (max length of pending connections)
 #define MAXLINE     1024  // max length of a single line
 #define RIO_BUFSIZE 1024  // Read IO buffer size
 
-
+/* TYPEDEFS */
 typedef struct {
   int rio_fd;                // buffer descriptor
   int rio_cnt;               // unread byte
@@ -60,13 +61,13 @@ typedef struct {
   char index[128];        // index pages
 } config;
 
-config conf[1];           // global conf
-
 typedef struct {
   const char *extention;
   const char * mimetype;
 } mime_map;
 
+
+/* GLOBAL VARIABLES */
 mime_map mimetypes [] = {
   { ".css", "text/css" },
   { ".gif", "image/gif" },
@@ -86,3 +87,5 @@ mime_map mimetypes [] = {
 };
 
 char *default_mimetype = "text/plain";
+
+config conf[1]; // global conf
