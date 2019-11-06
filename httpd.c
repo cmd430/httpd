@@ -301,7 +301,7 @@ void parse_request (int fd, http_request *req) {
 
   recv_req(fd, buf);
   sscanf(buf, "%s %s", &req->method, uri);
-  #if SHOW_DEBUG == TRUE
+  #if SHOW_HEADERS_DEBUG == TRUE
     printf("%s\n", buf);
   #endif
   while(recv_req(fd, buf)) {
@@ -315,7 +315,7 @@ void parse_request (int fd, http_request *req) {
     if (buf[0] == 'C' && buf[1] == 'o' && buf[2] == 'n' && buf[8] == 'T' && buf[9] == 'y' && buf[10] == 'p') {
       sscanf(buf, "Content-Type: %[^\t\r\n]", &req->type);
     }
-    #if SHOW_DEBUG == TRUE
+    #if SHOW_HEADERS_DEBUG == TRUE
       printf("%s\n", buf);
     #endif
   }
@@ -508,7 +508,7 @@ void serve_cgi (int out_fd, http_request *req) {
   if (pid == 0) {
 
     // disable php notices in console
-    #if SHOW_DEBUG == FALSE
+    #if SHOW_PHP_NOTICES == TRUE
       dup2(cgi_err[2], STDERR_FILENO);
     #endif
 
