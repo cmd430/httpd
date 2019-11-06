@@ -5,9 +5,27 @@
     <link rel="stylesheet" href="/css/style.css" />
     <script src="/js/functions.js"></script>
   </head>
-  
+
   <body>
     <h1>Hello World</h1>
     <img src="/img/icon.png"/>
+    <br>
+    <form action="/php/index.php" method="GET">
+      GET:
+      <input type="text" name="g" id="g">
+      <input type="submit" value="GET">
+    </form>
+    <br>
+    <form action="/php/index.php" method="POST">
+      POST:
+      <input type="text" name="p" id="p">
+      <input type="submit" value="POST">
+    </form>
+    <br>
+    <form action="/php/upload.php" method="POST" enctype="multipart/form-data">
+      Upload a File:
+      <input type="file" name="upload_file" id="upload_file">
+      <input type="submit" name="submit" value="UPLOAD">
+    </form>
   </body>
 </html>

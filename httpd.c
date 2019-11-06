@@ -291,7 +291,6 @@ void url_decode (char *src, char *dest, int max) {
 
 void parse_request (int fd, http_request *req) {
   char buf[MAXLINE];
-  char method[MAXLINE];
   char uri[MAXLINE];
   char query[MAXLINE];
 
@@ -301,7 +300,7 @@ void parse_request (int fd, http_request *req) {
   req->length = 0;
 
   recv_req(fd, buf);
-  sscanf(buf, "%s %s", method, uri);
+  sscanf(buf, "%s %s", &req->method, uri);
   #if SHOW_DEBUG == TRUE
     printf("%s\n", buf);
   #endif
@@ -312,6 +311,9 @@ void parse_request (int fd, http_request *req) {
     }
     if (buf[0] == 'C' && buf[1] == 'o' && buf[2] == 'n' && buf[8] == 'L' && buf[9] == 'e' && buf[10] == 'n') {
       sscanf(buf, "Content-Length: %d", &req->length);
+    }
+    if (buf[0] == 'C' && buf[1] == 'o' && buf[2] == 'n' && buf[8] == 'T' && buf[9] == 'y' && buf[10] == 'p') {
+      sscanf(buf, "Content-Type: %[^\t\r\n]", &req->type);
     }
     #if SHOW_DEBUG == TRUE
       printf("%s\n", buf);
@@ -336,7 +338,6 @@ void parse_request (int fd, http_request *req) {
     }
   }
 
-  strcpy(req->method, method);
   char *qs = strrchr(query, '?');
   if (qs) {
     memmove(qs, qs+1, strlen(qs));
@@ -457,7 +458,7 @@ void client_error (int fd, int status, char *msg, char *longmsg, http_request *r
   // headers
   sprintf(header_buf, "HTTP/1.1 %d %s\r\n", status, msg);
   sprintf(header_buf + strlen(header_buf), "Content-Type: text/html\r\n");
-  sprintf(header_buf + strlen(header_buf), "Content-length: %lu\r\n\r\n", req->end);
+  sprintf(header_buf + strlen(header_buf), "Content-Length: %lu\r\n\r\n", req->end);
   send_res(fd, header_buf, strlen(header_buf));
 
   // send body
@@ -476,8 +477,8 @@ void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) 
   }
 
   sprintf(buf + strlen(buf), "Cache-Control: no-cache\r\n");
-  sprintf(buf + strlen(buf), "Content-length: %lu\r\n", req->end - req->offset);
-  sprintf(buf + strlen(buf), "Content-type: %s\r\n\r\n", get_mimetype(req->filename));
+  sprintf(buf + strlen(buf), "Content-Length: %lu\r\n", req->end - req->offset);
+  sprintf(buf + strlen(buf), "Content-Type: %s\r\n\r\n", get_mimetype(req->filename));
 
   send_res(out_fd, buf, strlen(buf));
 
@@ -527,6 +528,9 @@ void serve_cgi (int out_fd, http_request *req) {
     char length[128];
     sprintf(length, "CONTENT_LENGTH=%d", req->length);
     putenv(length);
+    char type[128];
+    sprintf(type, "CONTENT_TYPE=%s", req->type);
+    putenv(type);
     char method[16];
     sprintf(method, "REQUEST_METHOD=%s", req->method);
     putenv(method);

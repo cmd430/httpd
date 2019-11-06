@@ -48,6 +48,7 @@ typedef struct {
   char method[128];    // request method
   char query[MAXLINE]; // query string
   int length;          // content length of POST
+  char type[128];      // content type of POST
   off_t offset;        // http range request
   size_t end;          // content length
   double rtime;        // time taken for request
