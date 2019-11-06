@@ -496,20 +496,23 @@ void serve_cgi (int out_fd, http_request *req) {
   char buf[256];
   int cgi_out[2];
   int cgi_in[2];
+  int cgi_err[2];
 
   sprintf(buf, "HTTP/1.1 200 OK\r\n");
   send_res(out_fd, buf, strlen(buf));
 
   pipe(cgi_out);
   pipe(cgi_in);
+  pipe(cgi_err);
 
   // fork and run php-cgi
   int pid = fork();
   if (pid == 0) {
 
     // disable php notices in console
-    #if SHOW_PHP_NOTICES == TRUE
+    #if SHOW_PHP_NOTICES == FALSE
       dup2(cgi_err[2], STDERR_FILENO);
+      close(cgi_err[2]);
     #endif
 
     dup2(cgi_out[1], STDOUT_FILENO);
@@ -601,12 +604,12 @@ void process (int fd, struct sockaddr_in *clientaddr) {
           sprintf(req.filename, "%s/", req.filename);
         }
 
-        // check if an indexexists if it does change request
+        // check if an index exists if it does change request
         // to open that so we dont get a dir listing (if enabled)
         char *index;
         char default_file[512];
         int default_fd;
-        index = strtok (conf->index, ",");
+        index = strtok (conf->index, " ");
         while (index != NULL) {
           sprintf(default_file, "%s%s", req.filename, index);
           default_fd = open(default_file, O_RDONLY, 0);
@@ -617,14 +620,14 @@ void process (int fd, struct sockaddr_in *clientaddr) {
             hasIndex = 1;
             break;
           }
-          index = strtok (NULL, ",");
+          index = strtok (NULL, " ");
         }
         if (hasIndex == 0) {
           close(default_fd);
         }
       }
 
-      if (conf->listing == 0 && hasIndex == 0 && isDir == 1) {
+      if (strcmp(conf->autoindex, "on") && hasIndex == 0 && isDir == 1) {
         status = 403;
         char *msg = "Forbidden";
         char *longmsg = "You don't have permission to access this resource";
@@ -672,13 +675,14 @@ void process (int fd, struct sockaddr_in *clientaddr) {
 }
 
 void parse_config (char *buf, config *conf) {
-  char int_buff[256];
-  if (sscanf(buf, " %s", int_buff) == EOF) return; // blank line
-  if (sscanf(buf, " %[#]", int_buff) == 1) return; // comment
-  if (sscanf(buf, " listen = %d", &conf->port) == 1) return;
-  if (sscanf(buf, " root = %s", &conf->root) == 1) return;
-  if (sscanf(buf, " listing = %d", &conf->listing) == 1) return;
-  if (sscanf(buf, " index = %s", &conf->index) == 1) return;
+  char int_buf[256];
+  if (sscanf(buf, " %s", int_buf) == EOF) return; // blank line
+  if (sscanf(buf, " %[#]", int_buf) == 1) return; // comment
+  if (sscanf(buf, " port %d;", &conf->port) == 1) return;
+  if (sscanf(buf, " root %[^;]", &conf->root) == 1) return;
+  if (sscanf(buf, " index %[^;]", &conf->index) == 1) return;
+  if (sscanf(buf, " autoindex %[^;]", &conf->autoindex) == 1) return;
+  if (strcmp(buf, "server {\n") || strcmp(buf, "}\n")) return;
   errno = -1;
   perror("invalid conf");
   exit(-1);

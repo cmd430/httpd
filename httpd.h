@@ -10,6 +10,7 @@
     support HTTP/2
     get correct content length for php scripts
     support SSL (https)
+    better more flexible config (multi servers!)
 
 */
 #include <arpa/inet.h>
@@ -57,10 +58,10 @@ typedef struct {
 } http_request;
 
 typedef struct {
-  int port;        // server listen port
-  char root[512];  // webroot
-  int listing;     // dir listing enabled or not
-  char index[128]; // index pages
+  int port;          // server listen port
+  char root[512];    // webroot
+  char index[128];   // index pages
+  char autoindex[3]; // dir listing enabled or not
 } config;
 
 typedef struct {
