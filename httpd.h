@@ -30,7 +30,7 @@
 #include <unistd.h>
 
 /* MACROS */
-#define SHOW_DEBUG         TRUE  // enable/disable some extra msgs
+#define SHOW_DEBUG         FALSE // enable/disable some extra msgs
 #define SHOW_HEADERS_DEBUG FALSE // Log request headers
 #define SHOW_PHP_NOTICES   FALSE // Log PHP Notices
 
