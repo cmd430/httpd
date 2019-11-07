@@ -14,13 +14,14 @@
 
 */
 /*
-  usage (load all settings from httpd.conf):
-    ./httpd
+  usage:
+    ./httpd [opts]
 
-  usage (load settings from httpd.conf and override some with params)
-    ./httpd -p 80
-    ./httpd -r www
-    ./httpd -p 80 -r www
+  opts:
+    -h, --help      show this help
+    -c, --conf      path to httpd.conf file, optional, defaults cwd
+    -p, --port      port to use, optional, defaults value in httpd.conf
+    -r, --root      path to webroot, optional, defaults value in httpd.conf
 */
 #include <arpa/inet.h>
 #include <signal.h>
@@ -38,6 +39,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <getopt.h>
 
 /* MACROS */
 #define SHOW_DEBUG         FALSE // enable/disable some extra msgs

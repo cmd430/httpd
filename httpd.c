@@ -690,30 +690,58 @@ void parse_config (char *buf, config *conf) {
   exit(-1);
 }
 
-int main (int argc, char *argv[], const char *optstring) { // main entry point for program
+void print_usage (int exit_code) {
+  printf("\n"
+         "  usage:\n"
+         "    ./httpd [opts]\n"
+         "\n"
+         "  opts:\n"
+         "    --conf <str>, -c              path to httpd.conf file, optional, defaults cwd\n"
+         "    --port <int>, -p              port to use, optional, defaults value in httpd.conf\n"
+         "    --root <str>, -r              path to webroot, optional, defaults value in httpd.conf\n"
+         "\n"
+         "    --help, -h                    show this help\n"
+         "\n");
+  exit(exit_code);
+}
+
+int main (int argc, char *argv[]) { // main entry point for program
   struct sockaddr_in clientaddr;
   int listenfd;
   int connectionfd;
   char *path;
   char buf[256];
   socklen_t clientlen = sizeof clientaddr;
-  FILE *fconf = fopen("httpd.conf", "r");
 
-  // parse conf file
-  int line_number = 0;
-  while (fgets(buf, sizeof buf, fconf)) {
-    ++line_number;
-    parse_config(buf, conf);
-  }
+  static struct option long_options[] = {
+    {"conf", required_argument, 0, 'c' },
+    {"port", required_argument, 0, 'p' },
+    {"root", required_argument, 0, 'r' },
+    {"help", no_argument,       0, 'h' },
+    {0,      0,                 0,  0  }
+  };
+  int long_index = 0;
 
-  // parse args (currently only port and root), overrides conf
+  char *conf_path = "httpd.conf";
+  int arg_port = 0;
+  char arg_root[512];
+  arg_root[0] = 0;
+
+  // parse args
   int opt;
-  while ((opt = getopt(argc, argv, "p:r:")) != -1) {
+  while ((opt = getopt_long(argc, argv,"hc:p:r:", long_options, &long_index )) != -1) {
     switch (opt) {
+      case 'h': {
+        print_usage(0);
+      }
+      case 'c': {
+        conf_path = optarg;
+        break;
+      }
       case 'p': {
         int port = atoi(optarg);
         if (port > 0) {
-          conf->port = port;
+          arg_port = port;
         } else {
           errno = 22;
           perror("error setting port");
@@ -721,10 +749,31 @@ int main (int argc, char *argv[], const char *optstring) { // main entry point f
         break;
       }
       case 'r': {
-        strncpy(conf->root, optarg, 512);
+        strncpy(arg_root, optarg, 512);
         break;
       }
+      default: {
+        print_usage(EXIT_FAILURE);
+      }
     }
+  }
+
+  // parse conf file
+  FILE *fconf = fopen(conf_path, "r");
+  if (fconf == NULL) {
+    perror("unable to load config");
+    exit(errno);
+  }
+  while (fgets(buf, sizeof buf, fconf)) {
+    parse_config(buf, conf);
+  }
+
+  // override conf with args if any
+  if (arg_port != 0) {
+    conf->port = arg_port;
+  }
+  if (strlen(arg_root) != 0) {
+    strncpy(conf->root, arg_root, 512);
   }
 
   if (chdir(conf->root) != 0) { // make sure path exists if not exit
