@@ -676,6 +676,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
 
 void parse_config (char *buf, config *conf) {
   char int_buf[256];
+
   if (sscanf(buf, " %s", int_buf) == EOF) return; // blank line
   if (sscanf(buf, " %[#]", int_buf) == 1) return; // comment
   if (sscanf(buf, " port %d;", &conf->port) == 1) return;
@@ -683,12 +684,13 @@ void parse_config (char *buf, config *conf) {
   if (sscanf(buf, " index %[^;]", &conf->index) == 1) return;
   if (sscanf(buf, " autoindex %[^;]", &conf->autoindex) == 1) return;
   if (strcmp(buf, "server {\n") || strcmp(buf, "}\n")) return;
+
   errno = -1;
   perror("invalid conf");
   exit(-1);
 }
 
-int main (int argc, char* argv[]) { // main entry point for program
+int main (int argc, char *argv[], const char *optstring) { // main entry point for program
   struct sockaddr_in clientaddr;
   int listenfd;
   int connectionfd;
@@ -703,6 +705,28 @@ int main (int argc, char* argv[]) { // main entry point for program
     ++line_number;
     parse_config(buf, conf);
   }
+
+  // parse args (currently only port and root), overrides conf
+  int opt;
+  while ((opt = getopt(argc, argv, "p:r:")) != -1) {
+    switch (opt) {
+      case 'p': {
+        int port = atoi(optarg);
+        if (port > 0) {
+          conf->port = port;
+        } else {
+          errno = 22;
+          perror("error setting port");
+        }
+        break;
+      }
+      case 'r': {
+        strncpy(conf->root, optarg, 512);
+        break;
+      }
+    }
+  }
+
   if (chdir(conf->root) != 0) { // make sure path exists if not exit
     perror(conf->root);
     exit(1);

@@ -13,6 +13,15 @@
     better more flexible config (multi servers!)
 
 */
+/*
+  usage (load all settings from httpd.conf):
+    ./httpd
+
+  usage (load settings from httpd.conf and override some with params)
+    ./httpd -p 80
+    ./httpd -r www
+    ./httpd -p 80 -r www
+*/
 #include <arpa/inet.h>
 #include <signal.h>
 #include <dirent.h>
