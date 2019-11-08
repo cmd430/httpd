@@ -1,0 +1,10 @@
+TODO:
+  support custom directory listing pages
+  support custom log format
+  support custom error pages
+  support all common HTTP/1.1 methods
+  support .htaccess rules
+  support plugins/modules
+  support HTTP/2
+  support SSL (https)
+  better more flexible config (multi server support for example)
