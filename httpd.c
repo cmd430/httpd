@@ -555,8 +555,25 @@ void serve_cgi (int out_fd, http_request *req) {
         write(cgi_in[1], &body, 1);
       }
     }
+
+    int crlf = 0;
+    req->end = 0;
     while (read(cgi_out[0], &body, 1) > 0) {
       send_res(out_fd, &body, 1);
+
+      // responase size without headers
+      if (body == '\r' || body == '\n') {
+        if (crlf != 4) {
+          crlf++;
+        }
+      } else {
+        if (crlf < 4) {
+          crlf = 0;
+        }
+      }
+      if (crlf == 4) {
+        req->end++;
+      }
     }
 
     close(cgi_out[0]);
@@ -683,7 +700,7 @@ void parse_config (char *buf, config *conf) {
   if (sscanf(buf, " root %[^;]", &conf->root) == 1) return;
   if (sscanf(buf, " index %[^;]", &conf->index) == 1) return;
   if (sscanf(buf, " autoindex %[^;]", &conf->autoindex) == 1) return;
-  if (strcmp(buf, "server {\n") || strcmp(buf, "}\n")) return;
+  if (strcmp(buf, " server {\n") || strcmp(buf, " }\n")) return;
 
   errno = -1;
   perror("invalid conf");

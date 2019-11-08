@@ -8,7 +8,6 @@
     support .htaccess rules
     support plugins/modules
     support HTTP/2
-    get correct content length for php scripts
     support SSL (https)
     better more flexible config (multi servers!)
 
