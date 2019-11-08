@@ -1,27 +1,3 @@
-/*
-
-  TODO:
-    support custom directory listing pages
-    support custom log format
-    support custom error pages
-    support all common HTTP/1.1 methods
-    support .htaccess rules
-    support plugins/modules
-    support HTTP/2
-    support SSL (https)
-    better more flexible config (multi servers!)
-
-*/
-/*
-  usage:
-    ./httpd [opts]
-
-  opts:
-    -h, --help      show this help
-    -c, --conf      path to httpd.conf file, optional, defaults cwd
-    -p, --port      port to use, optional, defaults value in httpd.conf
-    -r, --root      path to webroot, optional, defaults value in httpd.conf
-*/
 #include <arpa/inet.h>
 #include <signal.h>
 #include <dirent.h>
