@@ -1,12 +1,14 @@
 #include "httpd.h"
 
 
+// send response to client
 void send_res (int fd, char *msg, size_t len) {
   if (send(fd, msg, len, 0) == -1) {
     perror("Error in send");
   }
 }
 
+// receive request from client
 int recv_req (int fd, char *buffer) {
   char *p = buffer;
   int matched_eol = 0;
@@ -25,6 +27,7 @@ int recv_req (int fd, char *buffer) {
   return 0;
 }
 
+// format bytes to more readable size
 void format_size (char *buf, struct stat *stat) {
   if (S_ISDIR(stat->st_mode)) {
     sprintf(buf, "%s", "-");
@@ -42,6 +45,7 @@ void format_size (char *buf, struct stat *stat) {
   }
 }
 
+// scandir filter for directories only
 int directory_filter (const struct dirent *entry){
   struct stat st;
   stat(entry->d_name, &st);
@@ -51,6 +55,7 @@ int directory_filter (const struct dirent *entry){
   return 0;
 }
 
+// scandir filter for files only
 int file_filter (const struct dirent *entry){
   struct stat st;
   stat(entry->d_name, &st);
@@ -60,6 +65,7 @@ int file_filter (const struct dirent *entry){
   return 0;
 }
 
+// server directory index to client
 void serve_directory (int out_fd, int dir_fd, char *filename) {
   char buf[MAXLINE];
   char m_time[32];
@@ -218,6 +224,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   chdir(path);
 }
 
+// get mimetype from file extention
 static const char *get_mimetype (char *filename) {
   char *dot = strrchr(filename, '.');
   if (dot) { // get last instance of '.'
@@ -232,6 +239,7 @@ static const char *get_mimetype (char *filename) {
   return default_mimetype;
 }
 
+// create socket for server
 int open_listenfd (int port) { // open file descriptor (fd) for listen
   int listenfd;
   int opts = 1;
@@ -272,6 +280,7 @@ int open_listenfd (int port) { // open file descriptor (fd) for listen
   return listenfd;
 }
 
+// decode url encoded strings
 void url_decode (char *src, char *dest, int max) {
   char *p = src;
   char code[3] = { 0 };
@@ -289,6 +298,7 @@ void url_decode (char *src, char *dest, int max) {
   *dest = '\0';
 }
 
+// parse client request headers
 void parse_request (int fd, http_request *req) {
   char buf[MAXLINE];
   char uri[MAXLINE];
@@ -465,6 +475,7 @@ void client_error (int fd, int status, char *msg, char *longmsg, http_request *r
   send_res(fd, body_buf, strlen(body_buf));
 }
 
+// server static resource to client
 void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) {
   char buf[256];
 
@@ -492,6 +503,7 @@ void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) 
   }
 }
 
+// server cgi script result to client
 void serve_cgi (int out_fd, http_request *req) {
   char buf[256];
   int cgi_out[2];
@@ -583,6 +595,7 @@ void serve_cgi (int out_fd, http_request *req) {
   }
 }
 
+// handle client request with correct response
 void process (int fd, struct sockaddr_in *clientaddr) {
   struct timespec stime;
   struct timespec etime;
@@ -691,12 +704,13 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   log_access(status, clientaddr, &req);
 }
 
+// parse config file and set vars
 void parse_config (char *buf, config *conf) {
   char int_buf[256];
 
   if (sscanf(buf, " %s", int_buf) == EOF) return; // blank line
   if (sscanf(buf, " %[#]", int_buf) == 1) return; // comment
-  if (sscanf(buf, " port %d;", &conf->port) == 1) return;
+  if (sscanf(buf, " listen %d;", &conf->port) == 1) return;
   if (sscanf(buf, " root %[^;]", &conf->root) == 1) return;
   if (sscanf(buf, " index %[^;]", &conf->index) == 1) return;
   if (sscanf(buf, " autoindex %[^;]", &conf->autoindex) == 1) return;
@@ -713,7 +727,7 @@ void print_usage (int exit_code) {
          "    ./httpd [opts]\n"
          "\n"
          "  opts:\n"
-         "    --conf <str>, -c              path to httpd.conf file, optional, defaults cwd\n"
+         "    --conf <str>, -c              path to httpd.conf file, optional, defaults <cwd>/httpd.conf\n"
          "    --port <int>, -p              port to use, optional, defaults value in httpd.conf\n"
          "    --root <str>, -r              path to webroot, optional, defaults value in httpd.conf\n"
          "\n"
@@ -722,7 +736,8 @@ void print_usage (int exit_code) {
   exit(exit_code);
 }
 
-int main (int argc, char *argv[]) { // main entry point for program
+// main entry point for program
+int main (int argc, char *argv[]) {
   struct sockaddr_in clientaddr;
   int listenfd;
   int connectionfd;
