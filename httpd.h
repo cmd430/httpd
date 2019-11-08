@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <pthread.h>
 
 /* MACROS */
 #define SHOW_DEBUG         FALSE // enable/disable some extra msgs
@@ -55,7 +56,6 @@ typedef struct {
   const char * mimetype;
 } mime_map;
 
-
 /* GLOBAL VARIABLES */
 mime_map mimetypes [] = {
   { ".css", "text/css" },
@@ -78,3 +78,8 @@ mime_map mimetypes [] = {
 char *default_mimetype = "text/plain";
 
 config conf[1]; // global conf
+
+struct thread_args {
+  int connectionfd;
+  struct sockaddr_in clientaddr;
+};

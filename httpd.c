@@ -4,7 +4,9 @@
 // send response to client
 void send_res (int fd, char *msg, size_t len) {
   if (send(fd, msg, len, 0) == -1) {
-    perror("Error in send");
+    if (errno != 32) {
+      perror("Error in send");
+    }
   }
 }
 
@@ -636,12 +638,14 @@ void process (int fd, struct sockaddr_in *clientaddr) {
 
         // check if an index exists if it does change request
         // to open that so we dont get a dir listing (if enabled)
-        char *index;
+        char *index = calloc(strlen(conf->index) + 1, sizeof(char));
+        strcpy(index, conf->index);
+        char *current_index;
         char default_file[512];
         int default_fd;
-        index = strtok (conf->index, " ");
-        while (index != NULL) {
-          sprintf(default_file, "%s%s", req.filename, index);
+        current_index = strtok (index, " ");
+        while (current_index != NULL) {
+          sprintf(default_file, "%s%s", req.filename, current_index);
           default_fd = open(default_file, O_RDONLY, 0);
           if (default_fd >= 1) {
             close(file_fd);
@@ -650,8 +654,9 @@ void process (int fd, struct sockaddr_in *clientaddr) {
             hasIndex = 1;
             break;
           }
-          index = strtok (NULL, " ");
+          current_index = strtok (NULL, " ");
         }
+        free(index);
         if (hasIndex == 0) {
           close(default_fd);
         }
@@ -734,6 +739,12 @@ void print_usage (int exit_code) {
          "    --help, -h                    show this help\n"
          "\n");
   exit(exit_code);
+}
+
+void *test_thread (void *args) {
+  process(((struct thread_args*)args)->connectionfd, &((struct thread_args*)args)->clientaddr);
+  close(((struct thread_args*)args)->connectionfd);
+  pthread_exit(0);
 }
 
 // main entry point for program
@@ -825,7 +836,7 @@ int main (int argc, char *argv[]) {
   // ignore SIGPIPE signal so if a brower aborts a request we don't kill the process
   signal(SIGPIPE, SIG_IGN);
 
-  // create child processes to handle each request
+  // create child threads to handle each request
   while (1) {
     connectionfd = accept(listenfd, (addr *)&clientaddr, &clientlen);
     if (connectionfd < 0) {
@@ -835,20 +846,14 @@ int main (int argc, char *argv[]) {
         printf("accepted connection\n");
       #endif
     }
-    int pid = fork();
-    if (pid == 0) {
-      close(listenfd);
-      process(connectionfd, &clientaddr);
-      close(connectionfd);
-      exit(0);
-    } else if (pid > 0) {
-      #if SHOW_DEBUG == TRUE
-        printf("spawned child with pid %d\n", pid);
-      #endif
-      close(connectionfd);
-    } else {
-      perror("unable to spawn child processes\n");
-    }
+    pthread_t tid;
+    struct thread_args *args = (struct thread_args *)malloc(sizeof(struct thread_args));
+    args->connectionfd = connectionfd;
+    args->clientaddr = clientaddr;
+    pthread_create(&tid, NULL, test_thread, (void *)args);
+    pthread_join(tid, NULL);
+    free(args);
+    close(connectionfd);
   }
   close(listenfd);
 
