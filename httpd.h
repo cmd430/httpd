@@ -62,22 +62,23 @@ typedef struct {
   off_t offset;        // http range request
   size_t end;          // content length
   double rtime;        // time taken for request
-} http_request;
+} http_request_t;
 
 typedef struct {
   int port;          // server listen port
   char root[MAXPATH];    // webroot
   char index[128];   // index pages
   char autoindex[3]; // dir listing enabled or not
-} config;
+} config_t;
 
 typedef struct {
   const char *extention;
   const char * mimetype;
-} mime_map;
+} mime_map_t;
 
-/* GLOBAL VARIABLES */
-mime_map mimetypes [] = {
+/* GLOBALS */
+config_t conf[1]; // global conf
+mime_map_t mimetypes [] = {
   { ".css", "text/css" },
   { ".gif", "image/gif" },
   { ".htm", "text/html" },
@@ -94,12 +95,9 @@ mime_map mimetypes [] = {
   { ".xml", "text/xml" },
   { NULL, NULL },
 };
-
 char *default_mimetype = "text/plain";
-
-config conf[1]; // global conf
-
 struct thread_args {
   int connectionfd;
   struct sockaddr_in clientaddr;
 };
+

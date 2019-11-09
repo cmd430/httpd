@@ -218,7 +218,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
 static const char *get_mimetype (char *filename) {
   char *dot = strrchr(filename, '.');
   if (dot) { // get last instance of '.'
-    mime_map *map = mimetypes;
+    mime_map_t *map = mimetypes;
     while (map->extention) { // get mimetype if one matches
       if (strcmp(map->extention, dot) == 0) {
         return map->mimetype;
@@ -289,7 +289,7 @@ void url_decode (char *src, char *dest, int max) {
 }
 
 // parse client request headers
-void parse_request (int fd, http_request *req) {
+void parse_request (int fd, http_request_t *req) {
   char buf[MAXLINE];
   char uri[MAXLINE];
   char query[MAXLINE];
@@ -348,7 +348,7 @@ void parse_request (int fd, http_request *req) {
   url_decode(filename, req->filename, MAXLINE);
 }
 
-void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
+void log_access (int status, struct sockaddr_in *c_addr, http_request_t *req) {
   /* Log format:
       [UTC Time String] status method  request_uri response_time content_length
   */
@@ -407,7 +407,7 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
   printf("[%s] %s %-6s %s %s %s\n", reqtime, status_color, req->method, filename_color, rtime, content_length);
 }
 
-void client_error (int fd, int status, char *msg, char *longmsg, http_request *req) {
+void client_error (int fd, int status, char *msg, char *longmsg, http_request_t *req) {
   char header_buf[MAXLINE];
   char body_buf[MAXLINE];
 
@@ -446,7 +446,7 @@ void client_error (int fd, int status, char *msg, char *longmsg, http_request *r
 }
 
 // server static resource to client
-void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) {
+void serve_static (int out_fd, int in_fd, http_request_t *req, size_t total_size) {
   char buf[256];
 
   if (req->offset > 0) { // http request has range headers
@@ -474,7 +474,7 @@ void serve_static (int out_fd, int in_fd, http_request *req, size_t total_size) 
 }
 
 // server cgi script result to client
-void serve_cgi (int out_fd, http_request *req) {
+void serve_cgi (int out_fd, http_request_t *req) {
   char buf[256];
   int cgi_out[2];
   int cgi_in[2];
@@ -592,7 +592,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
 
   clock_gettime(CLOCK_REALTIME, &stime);
 
-  http_request req;
+  http_request_t req;
   parse_request(fd, &req);
 
   struct stat sbuf;
@@ -699,7 +699,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
 }
 
 // parse config file and set vars
-void parse_config (char *buf, config *conf) {
+void parse_config (char *buf, config_t *conf) {
   char int_buf[256];
 
   if (sscanf(buf, " %s", int_buf) == EOF) return; // blank line
