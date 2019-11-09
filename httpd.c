@@ -526,13 +526,13 @@ void serve_cgi (int out_fd, http_request *req) {
     // disable php notices in console
     #if SHOW_PHP_NOTICES == FALSE
       dup2(cgi_err[2], STDERR_FILENO);
-      close(cgi_err[2]);
     #endif
 
     dup2(cgi_out[1], STDOUT_FILENO);
     dup2(cgi_in[0], STDIN_FILENO);
     close(cgi_out[0]);
     close(cgi_in[1]);
+    close(cgi_err[2]);
 
     // setup envars for php-cgi
     putenv("GATEWAY_INTERFACE=CGI/1.1");
@@ -561,7 +561,9 @@ void serve_cgi (int out_fd, http_request *req) {
   } else if (pid > 0) {
     close(cgi_out[1]);
     close(cgi_in[0]);
+    close(cgi_err[2]);
 
+    // TODO, SPEED UP THIS!!
     char body;
     if (!strcmp(req->method, "POST") && req->length > 0) {
       for (int i = 0; i < req->length; i++) {
@@ -570,29 +572,36 @@ void serve_cgi (int out_fd, http_request *req) {
       }
     }
 
-    int crlf = 0;
-    req->end = 0;
-    while (read(cgi_out[0], &body, 1) > 0) {
-      send_res(out_fd, &body, 1);
 
-      // responase size without headers
-      if (body == '\r' || body == '\n') {
-        if (crlf != 4) {
-          crlf++;
+    char buffer[MAXLINE];
+    int headers_sent = 0;
+    req->end = 0;
+    while (1) {
+      ssize_t count = read(cgi_out[0], buffer, sizeof(buffer));
+      if (count == -1) {
+        if (errno == EINTR) {
+          continue;
+        } else {
+          perror("read");
         }
+      } else if (count == 0) {
+        break;
       } else {
-        if (crlf < 4) {
-          crlf = 0;
+        send_res(out_fd, buffer, count);
+        if (headers_sent == 0) {
+          if (buffer[count - 4] == '\r' && buffer[count - 3] == '\n') {
+            headers_sent = 1;
+          }
+        } else {
+          req->end += count;
         }
-      }
-      if (crlf == 4) {
-        req->end++;
       }
     }
-
-    close(cgi_out[0]);
-    close(cgi_in[1]);
   } else if (pid < 0) {
+    close(cgi_out[1]);
+    close(cgi_in[0]);
+    close(cgi_err[2]);
+
     perror("unable to spawn child processes\n");
   }
 }
