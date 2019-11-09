@@ -8,4 +8,3 @@ TODO:
   support HTTP/2
   support SSL (https)
   better more flexible config (multi server support for example)
-  dont use chdir for directory serving; need to get full path to dirents somehow

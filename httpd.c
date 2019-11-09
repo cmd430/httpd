@@ -47,26 +47,6 @@ void format_size (char *buf, struct stat *stat) {
   }
 }
 
-// scandir filter for directories only
-int directory_filter (const struct dirent *entry){
-  struct stat st;
-  stat(entry->d_name, &st);
-  if (S_ISDIR(st.st_mode)) {
-    return 1;
-  }
-  return 0;
-}
-
-// scandir filter for files only
-int file_filter (const struct dirent *entry){
-  struct stat st;
-  stat(entry->d_name, &st);
-  if (S_ISREG(st.st_mode)) {
-    return 1;
-  }
-  return 0;
-}
-
 // server directory index to client
 void serve_directory (int out_fd, int dir_fd, char *filename) {
   char buf[MAXLINE];
@@ -121,17 +101,20 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   int file_fd;
   struct dirent **namelist;
 
-  // store cwd and change into subdir for request if any
-  char buffer[256];
-  char *path = getcwd(buffer, 256);
-  chdir(filename);
-
   // scan directory for directories
-  n = scandir(".", &namelist, directory_filter, alphasort);
+  n = scandir(filename, &namelist, NULL, alphasort);
   if (n < 0) {
     perror("scandir");
   } else {
     for (int i = 0; i < n; ++i) {
+      struct stat st;
+      char ent_name[MAXPATH];
+      sprintf(ent_name, "%s%s", filename, namelist[i]->d_name);
+      stat(ent_name, &st);
+      if (!S_ISDIR(st.st_mode)) {
+        free(namelist[i]);
+        continue;
+      }
       if (namelist[i]->d_name[0] == '.' && strcmp(namelist[i]->d_name, "..")) {
         // if current dir (.) or hidden skip
         free(namelist[i]);
@@ -175,11 +158,19 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   }
 
   // scan directory for files
-  n = scandir(".", &namelist, file_filter, alphasort);
+  n = scandir(filename, &namelist, NULL, alphasort);
   if (n < 0) {
     perror("scandir");
   } else {
     for (int i = 0; i < n; ++i) {
+      struct stat st;
+      char ent_name[MAXPATH];
+      sprintf(ent_name, "%s%s", filename, namelist[i]->d_name);
+      stat(ent_name, &st);
+      if (!S_ISREG(st.st_mode)) {
+        free(namelist[i]);
+        continue;
+      }
       if (namelist[i]->d_name[0] == '.') {
         // if hidden skip
         free(namelist[i]);
@@ -221,9 +212,6 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
                "  </body>\n"
                "</html>\r\n\r\n");
   send_res(out_fd, buf, strlen(buf));
-
-  // change back to the webroot
-  chdir(path);
 }
 
 // get mimetype from file extention
@@ -409,8 +397,8 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
   }
 
   // format filename and add color
-  char filename[512];
-  char filename_color[512];
+  char filename[MAXPATH];
+  char filename_color[MAXPATH];
   if(!strncmp(req->filename, "./", 2) || !strncmp(req->filename, ".", 1)) {
     sprintf(filename, "/");
   } else {
@@ -536,10 +524,10 @@ void serve_cgi (int out_fd, http_request *req) {
 
     // setup envars for php-cgi
     putenv("GATEWAY_INTERFACE=CGI/1.1");
-    char script[512];
+    char script[MAXPATH];
     sprintf(script, "SCRIPT_FILENAME=%s", req->filename);
     putenv(script);
-    char query[512];
+    char query[MAXLINE];
     sprintf(query, "QUERY_STRING=%s", req->query);
     putenv(query);
     char length[128];
@@ -650,7 +638,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
         char *index = calloc(strlen(conf->index) + 1, sizeof(char));
         strcpy(index, conf->index);
         char *current_index;
-        char default_file[512];
+        char default_file[MAXPATH];
         int default_fd;
         current_index = strtok (index, " ");
         while (current_index != NULL) {
@@ -776,7 +764,7 @@ int main (int argc, char *argv[]) {
 
   char *conf_path = "httpd.conf";
   int arg_port = 0;
-  char arg_root[512];
+  char arg_root[MAXPATH];
   arg_root[0] = 0;
 
   // parse args
@@ -801,7 +789,7 @@ int main (int argc, char *argv[]) {
         break;
       }
       case 'r': {
-        strncpy(arg_root, optarg, 512);
+        strncpy(arg_root, optarg, MAXPATH);
         break;
       }
       default: {
@@ -825,7 +813,7 @@ int main (int argc, char *argv[]) {
     conf->port = arg_port;
   }
   if (strlen(arg_root) != 0) {
-    strncpy(conf->root, arg_root, 512);
+    strncpy(conf->root, arg_root, MAXPATH);
   }
 
   if (chdir(conf->root) != 0) { // make sure path exists if not exit

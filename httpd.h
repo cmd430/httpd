@@ -27,6 +27,7 @@
 #define FALSE    0
 #define LISTEN_Q 1024   // listen backlog (max length of pending connections)
 #define MAXLINE  1024   // max length of a single line
+#define MAXPATH  512    // max length of file path
 #define EOL      "\r\n" // End of line chars
 #define EOL_SIZE 2      // size of EOL
 
@@ -34,7 +35,7 @@
 typedef struct sockaddr addr; // make calls to bind(), connect(), and accept() more simple
 
 typedef struct {
-  char filename[512];  // requested file
+  char filename[MAXPATH];  // requested file
   char method[128];    // request method
   char query[MAXLINE]; // query string
   int length;          // content length of POST
@@ -46,7 +47,7 @@ typedef struct {
 
 typedef struct {
   int port;          // server listen port
-  char root[512];    // webroot
+  char root[MAXPATH];    // webroot
   char index[128];   // index pages
   char autoindex[3]; // dir listing enabled or not
 } config;
