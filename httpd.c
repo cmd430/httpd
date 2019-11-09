@@ -835,7 +835,7 @@ int main (int argc, char *argv[]) {
       #endif
     }
     pthread_t tid;
-    struct thread_args *args = (struct thread_args *)malloc(sizeof(struct thread_args));
+    struct thread_args *args = calloc(1, sizeof(struct thread_args));
     args->connectionfd = connectionfd;
     args->clientaddr = clientaddr;
     pthread_create(&tid, NULL, test_thread, (void *)args);
