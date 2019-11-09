@@ -31,12 +31,31 @@
 #define EOL      "\r\n" // End of line chars
 #define EOL_SIZE 2      // size of EOL
 
+/* COLOR ESCAPE CODES  */
+#define COLOR_BLACK          "\x1b[30m"
+#define COLOR_RED            "\x1b[31m"
+#define COLOR_GREEN          "\x1b[32m"
+#define COLOR_YELLOW         "\x1b[33m"
+#define COLOR_BLUE           "\x1b[34m"
+#define COLOR_MAGENTA        "\x1b[35m"
+#define COLOR_CYAN           "\x1b[36m"
+#define COLOR_WHITE          "\x1b[37m"
+#define COLOR_BRIGHT_BLACK   "\x1b[30;1m"
+#define COLOR_BRIGHT_RED     "\x1b[31;1m"
+#define COLOR_BRIGHT_GREEN   "\x1b[32;1m"
+#define COLOR_BRIGHT_YELLOW  "\x1b[33;1m"
+#define COLOR_BRIGHT_BLUE    "\x1b[34;1m"
+#define COLOR_BRIGHT_MAGENTA "\x1b[35;1m"
+#define COLOR_BRIGHT_CYAN    "\x1b[36;1m"
+#define COLOR_BRIGHT_WHITE   "\x1b[37;1m"
+#define COLOR_RESET          "\x1b[0m"
+
 /* TYPEDEFS */
 typedef struct sockaddr addr; // make calls to bind(), connect(), and accept() more simple
 
 typedef struct {
   char filename[MAXPATH];  // requested file
-  char method[128];    // request method
+  char method[8];    // request method
   char query[MAXLINE]; // query string
   int length;          // content length of POST
   char type[128];      // content type of POST

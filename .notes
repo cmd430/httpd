@@ -11,7 +11,6 @@
   make sure i send all correct headers (probably make a function that does generic headers in one call)
   deamonize process - https://www.thegeekstuff.com/2012/02/c-daemon-process/
 
-  ! fix all compiler warnings !
   ! make sure there are no memory leaks ! maybe we could do somthing like this  - https://stackoverflow.com/a/9074274
 
 == IDEAS ==

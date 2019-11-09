@@ -61,7 +61,7 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
   // send headers
   send_res(out_fd, buf, strlen(buf));
 
-  char dirname[256];
+  char dirname[128];
   if (!strcmp(filename, ".")) {
     sprintf(dirname, "/");
   } else {
@@ -134,8 +134,8 @@ void serve_directory (int out_fd, int dir_fd, char *filename) {
 
       // blank for current / parent dirs
       if (!strcmp(namelist[i]->d_name, ".") || !strcmp(namelist[i]->d_name, "..")) {
-        sprintf(m_time, "");
-        sprintf(size, "");
+        sprintf(m_time, "%s", "");
+        sprintf(size, "%s", "");
       }
 
       sprintf(buf, "      <tr>\n"
@@ -300,7 +300,7 @@ void parse_request (int fd, http_request *req) {
   req->length = 0;
 
   recv_req(fd, buf);
-  sscanf(buf, "%s %s", &req->method, uri);
+  sscanf(buf, "%s %s", req->method, uri);
   #if SHOW_HEADERS_DEBUG == TRUE
     printf("%s\n", buf);
   #endif
@@ -313,7 +313,7 @@ void parse_request (int fd, http_request *req) {
       sscanf(buf, "Content-Length: %d", &req->length);
     }
     if (buf[0] == 'C' && buf[1] == 'o' && buf[2] == 'n' && buf[8] == 'T' && buf[9] == 'y' && buf[10] == 'p') {
-      sscanf(buf, "Content-Type: %[^\t\r\n]", &req->type);
+      sscanf(buf, "Content-Type: %[^\t\r\n]", req->type);
     }
     #if SHOW_HEADERS_DEBUG == TRUE
       printf("%s\n", buf);
@@ -325,7 +325,6 @@ void parse_request (int fd, http_request *req) {
   if (uri[0] == '/') {
     filename = uri + 1;
     int length = strlen(filename);
-    int fnlen = 1;
     if (length == 0) {
       filename = ".";
     } else {
@@ -352,25 +351,6 @@ void parse_request (int fd, http_request *req) {
 void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
   /* Log format:
       [UTC Time String] status method  request_uri response_time content_length
-
-    Color Code Sequences:
-      Black:            \x1b[30m
-      Red:              \x1b[31m
-      Green:            \x1b[32m
-      Yellow:           \x1b[33m
-      Blue:             \x1b[34m
-      Magenta:          \x1b[35m
-      Cyan:             \x1b[36m
-      White:            \x1b[37m
-      Bright Black:     \x1b[30;1m
-      Bright Red:       \x1b[31;1m
-      Bright Green:     \x1b[32;1m
-      Bright Yellow:    \x1b[33;1m
-      Bright Blue:      \x1b[34;1m
-      Bright Magenta:   \x1b[35;1m
-      Bright Cyan:      \x1b[36;1m
-      Bright White:     \x1b[37;1m
-      Reset:            \x1b[0m
   */
 
   time_t t = time(NULL);
@@ -381,30 +361,30 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
   // colorize status code
   char status_color[16];
   if (status >= 100) {
-    sprintf(status_color, "\x1b[37m%d\x1b[0m", status);
+    sprintf(status_color, "%s%d%s", COLOR_WHITE, status, COLOR_RESET);
   }
   if (status >= 200) {
-    sprintf(status_color, "\x1b[32;1m%d\x1b[0m", status);
+    sprintf(status_color, "%s%d%s", COLOR_BRIGHT_GREEN, status, COLOR_RESET);
   }
   if (status >= 300) {
-    sprintf(status_color, "\x1b[36;1m%d\x1b[0m", status);
+    sprintf(status_color, "%s%d%s", COLOR_BRIGHT_CYAN, status, COLOR_RESET);
   }
   if (status >= 400) {
-    sprintf(status_color, "\x1b[33;1m%d\x1b[0m", status);
+    sprintf(status_color, "%s%d%s", COLOR_BRIGHT_YELLOW, status, COLOR_RESET);
   }
   if (status >= 500) {
-    sprintf(status_color, "\x1b[31;1m%d\x1b[0m", status);
+    sprintf(status_color, "%s%d%s", COLOR_BRIGHT_RED, status, COLOR_RESET);
   }
 
   // format filename and add color
-  char filename[MAXPATH];
-  char filename_color[MAXPATH];
+  char filename[MAXPATH + 1];
+  char filename_color[MAXPATH + 12];
   if(!strncmp(req->filename, "./", 2) || !strncmp(req->filename, ".", 1)) {
     sprintf(filename, "/");
   } else {
     sprintf(filename, "/%s", req->filename);
   }
-  sprintf(filename_color, "\x1b[32;1m%s\x1b[0m", filename);
+  sprintf(filename_color, "%s%s%s", COLOR_BRIGHT_GREEN, filename, COLOR_RESET);
 
   // reponse time
   char rtime[16];
@@ -420,7 +400,7 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request *req) {
   if (cl > 0) {
     sprintf(content_length, "%d", cl);
   } else {
-    sprintf(content_length, "");
+    sprintf(content_length, "%s", "");
   }
 
   // Print Log msg
@@ -524,19 +504,19 @@ void serve_cgi (int out_fd, http_request *req) {
 
     // setup envars for php-cgi
     putenv("GATEWAY_INTERFACE=CGI/1.1");
-    char script[MAXPATH];
+    char script[MAXPATH + 16];
     sprintf(script, "SCRIPT_FILENAME=%s", req->filename);
     putenv(script);
-    char query[MAXLINE];
+    char query[MAXLINE + 13];
     sprintf(query, "QUERY_STRING=%s", req->query);
     putenv(query);
-    char length[128];
+    char length[32];
     sprintf(length, "CONTENT_LENGTH=%d", req->length);
     putenv(length);
-    char type[128];
+    char type[128 + 13];
     sprintf(type, "CONTENT_TYPE=%s", req->type);
     putenv(type);
-    char method[16];
+    char method[8 + 15];
     sprintf(method, "REQUEST_METHOD=%s", req->method);
     putenv(method);
     putenv("REDIRECT_STATUS=true");
@@ -641,7 +621,8 @@ void process (int fd, struct sockaddr_in *clientaddr) {
           sprintf(req.filename, "./");
         }
         if (req.filename[strlen(req.filename) - 1] != '/') {
-          sprintf(req.filename, "%s/", req.filename);
+          char *tmp = req.filename;
+          sprintf(req.filename, "%s/", tmp);
         }
 
         // check if an index exists if it does change request
@@ -724,9 +705,9 @@ void parse_config (char *buf, config *conf) {
   if (sscanf(buf, " %s", int_buf) == EOF) return; // blank line
   if (sscanf(buf, " %[#]", int_buf) == 1) return; // comment
   if (sscanf(buf, " listen %d;", &conf->port) == 1) return;
-  if (sscanf(buf, " root %[^;]", &conf->root) == 1) return;
-  if (sscanf(buf, " index %[^;]", &conf->index) == 1) return;
-  if (sscanf(buf, " autoindex %[^;]", &conf->autoindex) == 1) return;
+  if (sscanf(buf, " root %[^;]", conf->root) == 1) return;
+  if (sscanf(buf, " index %[^;]", conf->index) == 1) return;
+  if (sscanf(buf, " autoindex %[^;]", conf->autoindex) == 1) return;
   if (strcmp(buf, " server {\n") || strcmp(buf, " }\n")) return;
 
   errno = -1;
@@ -760,7 +741,6 @@ int main (int argc, char *argv[]) {
   struct sockaddr_in clientaddr;
   int listenfd;
   int connectionfd;
-  char *path;
   char buf[256];
   socklen_t clientlen = sizeof clientaddr;
 
