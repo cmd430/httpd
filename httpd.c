@@ -551,21 +551,32 @@ void serve_cgi (int out_fd, http_request *req) {
     close(cgi_in[0]);
     close(cgi_err[2]);
 
-    // TODO, SPEED UP THIS!!
-    char body;
     if (!strcmp(req->method, "POST") && req->length > 0) {
-      for (int i = 0; i < req->length; i++) {
-        recv(out_fd, &body, 1, 0);
-        write(cgi_in[1], &body, 1);
+      char recv_buffer[MAXLINE];
+      int received_data = 0;
+      while (1) {
+        ssize_t count = recv(out_fd, recv_buffer, sizeof(recv_buffer), 0);
+        received_data += count;
+        if (count == -1) {
+          if (errno == EINTR) {
+            continue;
+          } else {
+            perror("recv");
+          }
+        } else if (count == 0) {
+          break;
+        } else {
+          write(cgi_in[1], recv_buffer, count);
+          if (received_data >= req->length) break;
+        }
       }
     }
 
-
-    char buffer[MAXLINE];
+    char resp_buffer[MAXLINE];
     int headers_sent = 0;
     req->end = 0;
     while (1) {
-      ssize_t count = read(cgi_out[0], buffer, sizeof(buffer));
+      ssize_t count = read(cgi_out[0], resp_buffer, sizeof(resp_buffer));
       if (count == -1) {
         if (errno == EINTR) {
           continue;
@@ -575,9 +586,9 @@ void serve_cgi (int out_fd, http_request *req) {
       } else if (count == 0) {
         break;
       } else {
-        send_res(out_fd, buffer, count);
+        send_res(out_fd, resp_buffer, count);
         if (headers_sent == 0) {
-          if (buffer[count - 4] == '\r' && buffer[count - 3] == '\n') {
+          if (resp_buffer[count - 4] == '\r' && resp_buffer[count - 3] == '\n') {
             headers_sent = 1;
           }
         } else {
