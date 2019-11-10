@@ -54,21 +54,21 @@
 typedef struct sockaddr addr; // make calls to bind(), connect(), and accept() more simple
 
 typedef struct {
-  char filename[MAXPATH];  // requested file
-  char method[8];    // request method
-  char query[MAXLINE]; // query string
-  int length;          // content length of POST
-  char type[128];      // content type of POST
-  off_t offset;        // http range request
-  size_t end;          // content length
-  double rtime;        // time taken for request
+  char filename[MAXPATH]; // requested file
+  char method[8];         // request method
+  char query[MAXLINE];    // query string
+  int length;             // content length of POST
+  char type[128];         // content type of POST
+  off_t offset;           // http range request
+  size_t end;             // content length
+  double rtime;           // time taken for request
 } http_request_t;
 
 typedef struct {
-  int port;          // server listen port
-  char root[MAXPATH];    // webroot
-  char index[128];   // index pages
-  char autoindex[3]; // dir listing enabled or not
+  int port;           // server listen port
+  char root[MAXPATH]; // webroot
+  char index[128];    // index pages
+  char autoindex[3];  // dir listing enabled or not
 } config_t;
 
 typedef struct {
