@@ -7,11 +7,9 @@
   support plugins/modules
   support HTTP/2
   support SSL (https)
-  better more flexible config (multi server support for example)
+  better more flexible config (multi server support for example) - Linked List maybe for setting storage
   make sure i send all correct headers (probably make a function that does generic headers in one call)
-  deamonize process - https://www.thegeekstuff.com/2012/02/c-daemon-process/
-
-  ! make sure there are no memory leaks ! maybe we could do somthing like this  - https://stackoverflow.com/a/9074274
+  deamonize process, disable or enable from cmdline param - https://www.thegeekstuff.com/2012/02/c-daemon-process/
 
 == IDEAS ==
   look into speeding up `void serve_cgi(int, http_request*)` by removing `fork()` if possible, maybe using another thread?
