@@ -100,4 +100,3 @@ struct thread_args {
   int connectionfd;
   struct sockaddr_in clientaddr;
 };
-

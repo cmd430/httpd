@@ -551,7 +551,6 @@ void serve_cgi (int out_fd, http_request_t *req) {
         }
       }
     }
-
     char resp_buffer[MAXLINE];
     int headers_sent = 0;
     req->end = 0;
@@ -568,7 +567,7 @@ void serve_cgi (int out_fd, http_request_t *req) {
       } else {
         send_res(out_fd, resp_buffer, count);
         if (headers_sent == 0) {
-          if (resp_buffer[count - 4] == '\r' && resp_buffer[count - 3] == '\n') {
+          if (!strstr(resp_buffer, "\r\n\r\n")) {
             headers_sent = 1;
           }
         } else {
