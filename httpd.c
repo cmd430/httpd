@@ -47,19 +47,36 @@ void format_size (char *buf, struct stat *stat) {
   }
 }
 
-// server directory index to client
-void serve_directory (int out_fd, int dir_fd, char *filename) {
+// add generic headers to request
+void apply_headers (http_request_t *req, http_response_t *res, int end) {
+  char GMT_String[128];
+  struct tm *tm_buf;
+  time_t t = time(NULL);
+  tm_buf = gmtime(&t);
+  strftime(GMT_String, sizeof(GMT_String), "%a, %d %b %Y %H:%M:%S GMT", tm_buf);
+  sprintf(res->headers + strlen(res->headers), "Date: %s\r\n", GMT_String);
+  sprintf(res->headers + strlen(res->headers), "Cache-Control: no-cache\r\n");
+  sprintf(res->headers + strlen(res->headers), "X-Powered-By: alrighttpd/%s\r\n", SERVER_VERSION);
+  if (end == 1) {
+    sprintf(res->headers + strlen(res->headers), "\r\n");
+  }
+}
+
+// serve directory index to client
+void serve_directory (int out_fd, int dir_fd, http_request_t *req, http_response_t *res) {
+  char *filename = req->filename;
   char buf[MAXLINE];
   char m_time[32];
   char size[16];
   struct stat statbuf;
 
   // set headers
-  sprintf(buf, "HTTP/1.1 200 OK\r\n");
-  sprintf(buf + strlen(buf), "Content-Type: text/html\r\n\r\n");
+  sprintf(res->headers, "HTTP/1.1 200 OK\r\n");
+  sprintf(res->headers + strlen(res->headers), "Content-Type: text/html\r\n\r\n");
+  apply_headers(req, res, 1);
 
   // send headers
-  send_res(out_fd, buf, strlen(buf));
+  send_res(out_fd, res->headers, strlen(res->headers));
 
   char dirname[128];
   if (!strcmp(filename, ".")) {
@@ -398,9 +415,8 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request_t *req, ht
 
   // content length
   char content_length[16];
-  int cl = req->end - req->offset;
-  if (cl > 0) {
-    sprintf(content_length, "%d", cl);
+  if (res->content_length > 0) {
+    sprintf(content_length, "%d", res->content_length);
   } else {
     sprintf(content_length, "%s", "");
   }
@@ -449,21 +465,20 @@ void client_error (int fd, int status, char *msg, char *longmsg, http_request_t 
 
 // server static resource to client
 void serve_static (int out_fd, int in_fd, http_request_t *req, http_response_t *res, size_t total_size) {
-  char buf[256];
-
   if (req->offset > 0) { // http request has range headers
-    sprintf(buf, "HTTP/1.1 Partial\r\n");
-    sprintf(buf + strlen(buf), "Content-Range: bytes %lu-%lu/%lu\r\n", req->offset, req->end, total_size);
+    sprintf(res->headers, "HTTP/1.1 Partial\r\n");
+    sprintf(res->headers + strlen(res->headers), "Content-Range: bytes %lu-%lu/%lu\r\n", req->offset, req->end, total_size);
   } else {
-    sprintf(buf, "HTTP/1.1 200 OK\r\n");
-    sprintf(buf + strlen(buf), "Accept-Ranges: bytes\r\n");
+    sprintf(res->headers, "HTTP/1.1 200 OK\r\n");
+    sprintf(res->headers + strlen(res->headers), "Accept-Ranges: bytes\r\n");
   }
+  res->content_length = (int)(req->end - req->offset);
+  sprintf(res->headers + strlen(res->headers), "Content-Length: %d\r\n", res->content_length);
+  strcpy(res->content_type, get_mimetype(req->filename));
+  sprintf(res->headers + strlen(res->headers), "Content-Type: %s\r\n", res->content_type);
 
-  sprintf(buf + strlen(buf), "Cache-Control: no-cache\r\n");
-  sprintf(buf + strlen(buf), "Content-Length: %lu\r\n", req->end - req->offset);
-  sprintf(buf + strlen(buf), "Content-Type: %s\r\n\r\n", get_mimetype(req->filename));
-
-  send_res(out_fd, buf, strlen(buf));
+  apply_headers(req, res, 1);
+  send_res(out_fd, res->headers, strlen(res->headers));
 
   off_t offset = req->offset;
   while (offset < req->end) {
@@ -477,13 +492,13 @@ void serve_static (int out_fd, int in_fd, http_request_t *req, http_response_t *
 
 // server cgi script result to client
 void serve_cgi (int out_fd, http_request_t *req, http_response_t *res) {
-  char buf[256];
   int cgi_out[2];
   int cgi_in[2];
   int cgi_err[2];
 
-  sprintf(buf, "HTTP/1.1 200 OK\r\n");
-  send_res(out_fd, buf, strlen(buf));
+  sprintf(res->headers, "HTTP/1.1 200 OK\r\n");
+  apply_headers(req, res, 0);
+  send_res(out_fd, res->headers, strlen(res->headers));
 
   pipe(cgi_out);
   pipe(cgi_in);
@@ -555,7 +570,6 @@ void serve_cgi (int out_fd, http_request_t *req, http_response_t *res) {
     }
     char resp_buffer[MAXLINE];
     int headers_sent = 0;
-    req->end = 0;
     while (1) {
       ssize_t count = read(cgi_out[0], resp_buffer, sizeof(resp_buffer));
       if (count == -1) {
@@ -567,14 +581,14 @@ void serve_cgi (int out_fd, http_request_t *req, http_response_t *res) {
       } else if (count == 0) {
         break;
       } else {
-        send_res(out_fd, resp_buffer, count);
         if (headers_sent == 0) {
           if (!strstr(resp_buffer, "\r\n\r\n")) {
             headers_sent = 1;
           }
         } else {
-          req->end += count;
+          res->content_length += count;
         }
+        send_res(out_fd, resp_buffer, count);
       }
     }
   } else if (pid < 0) {
@@ -597,6 +611,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
   struct stat sbuf;
   int status = 200;
   int file_fd = open(req.filename, O_RDONLY, 0);
+  res.content_length = 0;
 
   // handle differnt request methods
   if (!strcmp(req.method, "GET") || !strcmp(req.method, "HEAD") || !strcmp(req.method, "POST")) {
@@ -672,7 +687,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
           }
         } else if (S_ISDIR(sbuf.st_mode)) { // is dir
           status = 200;
-          serve_directory(fd, file_fd, req.filename);
+          serve_directory(fd, file_fd, &req, &res);
         } else { // unknown error
           status = 500;
           char *msg = "Internal Server Error";
@@ -727,7 +742,7 @@ void print_usage (int exit_code) {
   exit(exit_code);
 }
 
-void *test_thread (void *args) {
+void *connection_thread (void *args) {
   process(((struct thread_args*)args)->connectionfd, &((struct thread_args*)args)->clientaddr);
   close(((struct thread_args*)args)->connectionfd);
   pthread_exit(0);
@@ -835,7 +850,7 @@ int main (int argc, char *argv[]) {
     struct thread_args *args = calloc(1, sizeof(struct thread_args));
     args->connectionfd = connectionfd;
     args->clientaddr = clientaddr;
-    pthread_create(&tid, NULL, test_thread, (void *)args);
+    pthread_create(&tid, NULL, connection_thread, (void *)args);
     pthread_join(tid, NULL);
     free(args);
     close(connectionfd);

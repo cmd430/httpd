@@ -17,6 +17,9 @@
 #include <getopt.h>
 #include <pthread.h>
 
+/* VERSION INFO */
+#define SERVER_VERSION     "0.1" // probably never gonna remember to update this
+
 /* MACROS */
 #define SHOW_DEBUG         FALSE // enable/disable some extra msgs
 #define SHOW_HEADERS_DEBUG FALSE // Log request headers
@@ -65,7 +68,7 @@ typedef struct {
 } http_request_t;
 
 typedef struct {
-  char headers;             // extra response headers
+  char headers[MAXLINE];        // response headers
   int content_length;       // content length on response
   char content_type[128];   // content type of response
   struct timespec res_time; // time of response
