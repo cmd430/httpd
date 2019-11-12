@@ -233,10 +233,10 @@ static const char *get_mimetype (char *filename) {
 int open_listenfd (int port) { // open file descriptor (fd) for listen
   int listenfd;
   int opts = 1;
-  struct sockaddr_in serveraddr;
+  struct sockaddr_in6 serveraddr;
 
   // create socket descriptor
-  if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+  if ((listenfd = socket(AF_INET6, SOCK_STREAM, 0)) < 0) {
     return -1;
   }
 
@@ -252,9 +252,9 @@ int open_listenfd (int port) { // open file descriptor (fd) for listen
 
   // setup serveraddr struct with IP/Port and family
   memset(&serveraddr, 0, sizeof(serveraddr));
-  serveraddr.sin_family = AF_INET;
-  serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);     // bind any interface on host
-  serveraddr.sin_port = htons((unsigned short) port); // bind port
+  serveraddr.sin6_family = AF_INET6;
+  serveraddr.sin6_port = htons((unsigned short) port); // bind port
+  serveraddr.sin6_addr = in6addr_any;
 
   // bind port on host for any IP (interface)
   if (bind(listenfd, (addr *)&serveraddr, sizeof(serveraddr)) < 0) {

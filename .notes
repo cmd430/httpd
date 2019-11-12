@@ -10,6 +10,7 @@
   better more flexible config (multi server support for example) - Linked List maybe for setting storage
   make sure i send all correct headers (probably make a function that does generic headers in one call)
   deamonize process, disable or enable from cmdline param - https://www.thegeekstuff.com/2012/02/c-daemon-process/
+  FastCGI
 
 == IDEAS ==
   look into speeding up `void serve_cgi(int, http_request*)` by removing `fork()` if possible, maybe using another thread?
