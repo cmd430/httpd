@@ -289,7 +289,7 @@ void url_decode (char *src, char *dest, int max) {
 }
 
 // parse client request headers
-void parse_request (int fd, http_request_t *req) {
+void parse_request (int fd, http_request_t *req, http_response_t *res) {
   char buf[MAXLINE];
   char uri[MAXLINE];
   char query[MAXLINE];
@@ -297,7 +297,7 @@ void parse_request (int fd, http_request_t *req) {
   // defaults
   req->offset = 0;
   req->end = 0;
-  req->length = 0;
+  req->content_length = 0;
 
   recv_req(fd, buf);
   sscanf(buf, "%s %s", req->method, uri);
@@ -310,10 +310,10 @@ void parse_request (int fd, http_request_t *req) {
       if (req->end != 0) req->end++;
     }
     if (buf[0] == 'C' && buf[1] == 'o' && buf[2] == 'n' && buf[8] == 'L' && buf[9] == 'e' && buf[10] == 'n') {
-      sscanf(buf, "Content-Length: %d", &req->length);
+      sscanf(buf, "Content-Length: %d", &req->content_length);
     }
     if (buf[0] == 'C' && buf[1] == 'o' && buf[2] == 'n' && buf[8] == 'T' && buf[9] == 'y' && buf[10] == 'p') {
-      sscanf(buf, "Content-Type: %[^\t\r\n]", req->type);
+      sscanf(buf, "Content-Type: %[^\t\r\n]", req->content_type);
     }
     #if SHOW_HEADERS_DEBUG == TRUE
       printf("%s\n", buf);
@@ -348,11 +348,12 @@ void parse_request (int fd, http_request_t *req) {
   url_decode(filename, req->filename, MAXLINE);
 }
 
-void log_access (int status, struct sockaddr_in *c_addr, http_request_t *req) {
+void log_access (int status, struct sockaddr_in *c_addr, http_request_t *req, http_response_t *res) {
   /* Log format:
       [UTC Time String] status method  request_uri response_time content_length
   */
 
+  // time of request
   time_t t = time(NULL);
   struct tm * lt = localtime(&t);
   char reqtime[512];
@@ -387,11 +388,12 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request_t *req) {
   sprintf(filename_color, "%s%s%s", COLOR_BRIGHT_GREEN, filename, COLOR_RESET);
 
   // reponse time
-  char rtime[16];
-  if (req->rtime <= 999) {
-    sprintf(rtime, "%.1f ms", req->rtime);
+  double rtime = (1000 * (res->res_time.tv_sec - req->req_time.tv_sec)) + ((float)(res->res_time.tv_nsec - req->req_time.tv_nsec) / 1000000);
+  char response_time[16];
+  if (rtime <= 999) {
+    sprintf(response_time, "%.1f ms", rtime);
   } else {
-    sprintf(rtime, "%.2f s", req->rtime / 1000);
+    sprintf(response_time, "%.2f s", rtime / 1000);
   }
 
   // content length
@@ -404,10 +406,10 @@ void log_access (int status, struct sockaddr_in *c_addr, http_request_t *req) {
   }
 
   // Print Log msg
-  printf("[%s] %s %-6s %s %s %s\n", reqtime, status_color, req->method, filename_color, rtime, content_length);
+  printf("[%s] %s %-6s %s %s %s\n", reqtime, status_color, req->method, filename_color, response_time, content_length);
 }
 
-void client_error (int fd, int status, char *msg, char *longmsg, http_request_t *req) {
+void client_error (int fd, int status, char *msg, char *longmsg, http_request_t *req, http_response_t *res) {
   char header_buf[MAXLINE];
   char body_buf[MAXLINE];
 
@@ -446,7 +448,7 @@ void client_error (int fd, int status, char *msg, char *longmsg, http_request_t 
 }
 
 // server static resource to client
-void serve_static (int out_fd, int in_fd, http_request_t *req, size_t total_size) {
+void serve_static (int out_fd, int in_fd, http_request_t *req, http_response_t *res, size_t total_size) {
   char buf[256];
 
   if (req->offset > 0) { // http request has range headers
@@ -474,7 +476,7 @@ void serve_static (int out_fd, int in_fd, http_request_t *req, size_t total_size
 }
 
 // server cgi script result to client
-void serve_cgi (int out_fd, http_request_t *req) {
+void serve_cgi (int out_fd, http_request_t *req, http_response_t *res) {
   char buf[256];
   int cgi_out[2];
   int cgi_in[2];
@@ -511,10 +513,10 @@ void serve_cgi (int out_fd, http_request_t *req) {
     sprintf(query, "QUERY_STRING=%s", req->query);
     putenv(query);
     char length[32];
-    sprintf(length, "CONTENT_LENGTH=%d", req->length);
+    sprintf(length, "CONTENT_LENGTH=%d", req->content_length);
     putenv(length);
     char type[128 + 13];
-    sprintf(type, "CONTENT_TYPE=%s", req->type);
+    sprintf(type, "CONTENT_TYPE=%s", req->content_type);
     putenv(type);
     char method[8 + 15];
     sprintf(method, "REQUEST_METHOD=%s", req->method);
@@ -531,7 +533,7 @@ void serve_cgi (int out_fd, http_request_t *req) {
     close(cgi_in[0]);
     close(cgi_err[2]);
 
-    if (!strcmp(req->method, "POST") && req->length > 0) {
+    if (!strcmp(req->method, "POST") && req->content_length > 0) {
       char recv_buffer[MAXLINE];
       int received_data = 0;
       while (1) {
@@ -547,7 +549,7 @@ void serve_cgi (int out_fd, http_request_t *req) {
           break;
         } else {
           write(cgi_in[1], recv_buffer, count);
-          if (received_data >= req->length) break;
+          if (received_data >= req->content_length) break;
         }
       }
     }
@@ -586,13 +588,11 @@ void serve_cgi (int out_fd, http_request_t *req) {
 
 // handle client request with correct response
 void process (int fd, struct sockaddr_in *clientaddr) {
-  struct timespec stime;
-  struct timespec etime;
-
-  clock_gettime(CLOCK_REALTIME, &stime);
-
   http_request_t req;
-  parse_request(fd, &req);
+  http_response_t res;
+
+  clock_gettime(CLOCK_REALTIME, &req.req_time);
+  parse_request(fd, &req, &res);
 
   struct stat sbuf;
   int status = 200;
@@ -605,7 +605,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
       status = 404;
       char *msg = "Not Found";
       char *longmsg = "File not found";
-      client_error(fd, status, msg, longmsg, &req);
+      client_error(fd, status, msg, longmsg, &req, &res);
     } else {
       int isDir = 0;
       int hasIndex = 0;
@@ -654,7 +654,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
         status = 403;
         char *msg = "Forbidden";
         char *longmsg = "You don't have permission to access this resource";
-        client_error(fd, status, msg, longmsg, &req);
+        client_error(fd, status, msg, longmsg, &req, &res);
       } else {
         // show dirlisting or page
         fstat(file_fd, &sbuf);
@@ -666,9 +666,9 @@ void process (int fd, struct sockaddr_in *clientaddr) {
             status = 206;
           }
           if (!strcmp(strrchr(req.filename, '.'), ".php")) {
-            serve_cgi(fd, &req);
+            serve_cgi(fd, &req, &res);
           } else {
-            serve_static(fd, file_fd, &req, sbuf.st_size);
+            serve_static(fd, file_fd, &req, &res, sbuf.st_size);
           }
         } else if (S_ISDIR(sbuf.st_mode)) { // is dir
           status = 200;
@@ -677,7 +677,7 @@ void process (int fd, struct sockaddr_in *clientaddr) {
           status = 500;
           char *msg = "Internal Server Error";
           char *longmsg = "An unknown error occurred";
-          client_error(fd, status, msg, longmsg, &req);
+          client_error(fd, status, msg, longmsg, &req, &res);
         }
       }
     }
@@ -686,15 +686,13 @@ void process (int fd, struct sockaddr_in *clientaddr) {
     status = 501;
     char *msg = "Not Implemented";
     char *longmsg = "Method not implemented";
-    client_error(fd, status, msg, longmsg, &req);
+    client_error(fd, status, msg, longmsg, &req, &res);
   }
   close(file_fd);
 
-  // calculate response time
-  clock_gettime(CLOCK_REALTIME, &etime);
-  req.rtime = (1000 * (etime.tv_sec - stime.tv_sec)) + ((float)(etime.tv_nsec - stime.tv_nsec) / 1000000);
+  clock_gettime(CLOCK_REALTIME, &res.res_time);
 
-  log_access(status, clientaddr, &req);
+  log_access(status, clientaddr, &req, &res);
 }
 
 // parse config file and set vars
